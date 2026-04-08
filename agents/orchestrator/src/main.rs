@@ -61,7 +61,7 @@ async fn generate_prd(gateway_addr: &str) -> Result<serde_json::Value> {
         .header("anthropic-version", "2023-06-01")
         .header("content-type", "application/json")
         .json(&json!({
-            "model": "claude-sonnet-4-20250514",
+            "model": "claude-sonnet-4-6-20250514",
             "max_tokens": 4096,
             "messages": [{
                 "role": "user",

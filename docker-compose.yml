@@ -170,13 +170,11 @@ services:
     ports:
       - "4222:4222"   # Client connections
       - "8222:8222"   # HTTP monitoring
-    command:
-      - "-m"
-      - "8222"
-      - "--user"
-      - "${NATS_USER:-a2a}"
-      - "--pass"
-      - "${NATS_PASSWORD:-}"
+    # Auth: set NATS_USER + NATS_PASSWORD in .env to enable.
+    # If NATS_PASSWORD is empty, NATS runs without auth (dev default).
+    command: >-
+      -m 8222
+      ${NATS_PASSWORD:+--user ${NATS_USER:-a2a} --pass ${NATS_PASSWORD}}
 
   # ── Cloudflare Tunnel (optional) ───────────────────────────────────────────
   # Exposes :7241 (peer gRPC) and :7242 (A2A HTTP) to the public internet.

@@ -145,16 +145,19 @@ pub fn router(state: AppState) -> Router {
 
 // ── Auth middleware ───────────────────────────────────────────────────────────
 
-/// Timing-safe string comparison to prevent timing side-channels on token checks.
+/// Timing-safe string comparison. Does NOT leak length information —
+/// XOR-folds both strings padded to the longer length.
 fn constant_time_eq(a: &str, b: &str) -> bool {
-    if a.len() != b.len() {
-        return false;
+    let a = a.as_bytes();
+    let b = b.as_bytes();
+    let len = a.len().max(b.len());
+    let mut diff = (a.len() != b.len()) as u8;
+    for i in 0..len {
+        let x = if i < a.len() { a[i] } else { 0 };
+        let y = if i < b.len() { b[i] } else { 0xff };
+        diff |= x ^ y;
     }
-    a.as_bytes()
-        .iter()
-        .zip(b.as_bytes())
-        .fold(0u8, |acc, (x, y)| acc | (x ^ y))
-        == 0
+    diff == 0
 }
 
 /// Query parameter used for browser-friendly token auth (`?token=<token>`).

@@ -1,0 +1,112 @@
+# Tools-A2A Code Review — Commit ee7f51d
+# Numbered Issue List
+
+## BLOCKER Issues
+
+1. BLOCKER | agents/orchestrator/src/main.rs:233
+   Anthropic API model version hardcoded to "claude-sonnet-4-20250514" which is 
+   incorrect. Should be "claude-sonnet-4-6-20250514" or similar. Will fail at 
+   runtime with 404 error.
+
+2. BLOCKER | docker-compose.yml:1047-1048
+   NATS password defaults to empty string (${NATS_PASSWORD:-}). Creates a false 
+   security illusion — auth appears enabled but accepts empty password. Either 
+   use strong default random password or remove auth default entirely.
+
+---
+
+## WARNING Issues
+
+3. WARNING | docker-compose.yml:1045-1048
+   NATS auth syntax incorrect. Passing --user and --pass as separate flags, but 
+   NATS 2.10+ expects --user user:pass (single arg) or separate config file. 
+   Current syntax will be ignored, leaving auth disabled.
+
+4. WARNING | agents/orchestrator/src/main.rs:248-261
+   PRD generation error handling insufficient. If API returns 200 but missing 
+   content field, code defaults to "(no content)" string and silently stores as 
+   real data. Should validate content field exists before storing.
+
+5. WARNING | crates/a2a-gateway/src/memory_service.rs + lib.rs
+   MemoryService is defined and exported but never wired into the gateway. No 
+   routes created, never instantiated in main.rs, never passed to AppState. 
+   Code is dead — agents cannot call it.
+
+6. WARNING | crates/a2a-gateway/src/web/mod.rs:1017-1018
+   Web dashboard auth accepts ?token=<token> query parameter. This logs the token 
+   in access logs and browser history, defeating the purpose of the token. Query 
+   param auth should be removed or heavily documented as browser-only.
+
+7. WARNING | crates/a2a-gateway/src/web/mod.rs:972-982
+   constant_time_eq() function has early length check, making it non-constant 
+   time. Attacker can measure timing difference to determine token length, 
+   reducing search space by ~10x. Should use subtle crate or include length in 
+   XOR comparison.
+
+8. WARNING | crates/a2a-gateway/src/peer_client.rs:871-882
+   use_tls parameter is logged but never used in connection. Tonic Channel 
+   automatically determines TLS from http:// vs https:// scheme, so the parameter 
+   is purely informational. Either enforce the flag or rename to clarify intent.
+
+---
+
+## NIT Issues
+
+9.  NIT | agents/orchestrator/src/main.rs:228
+    Anthropic API key passed directly to reqwest. If request fails with verbose 
+    error logging, the key may leak in error messages. Recommend masking key 
+    value when logging.
+
+10. NIT | crates/a2a-gateway/src/http_server.rs:426-429
+    CORS configuration allows any origin and any headers. While intentional for 
+    agent interop, this should be documented. Recommend adding comment explaining 
+    tradeoff and noting that this changes if token-based auth is added.
+
+11. NIT | docker-compose.yml:1055
+    Cloudflare tunnel image tagged as 2024.4.1 but not pinned to digest. For 
+    production, pin to specific digest (cloudflare/cloudflared@sha256:...) to 
+    prevent accidental tag overwrites.
+
+12. NIT | crates/a2a-gateway/src/migrations/008_memory_facts.sql:12-14
+    Memory facts expiry index (valid_to IS NOT NULL) not used by recall queries. 
+    Consider creating combined index on (agent_name, valid_to DESC) for common 
+    query patterns. Current indexes are functional but sub-optimal for larger datasets.
+
+13. NIT | crates/a2a-gateway/src/memory_service.rs:799-809
+    Test expire_sets_valid_to() bypasses the service API and queries DB directly. 
+    Should test that expire() is actually reflected in recall() results instead of 
+    direct DB fetch.
+
+---
+
+## Summary Table
+
+| # | Severity | File | Line(s) | Issue Type |
+|---|----------|------|---------|-----------|
+| 1 | BLOCKER | orchestrator/src/main.rs | 233 | Invalid API model version |
+| 2 | BLOCKER | docker-compose.yml | 1047-1048 | Auth default empty password |
+| 3 | WARNING | docker-compose.yml | 1045-1048 | NATS auth flag format wrong |
+| 4 | WARNING | orchestrator/src/main.rs | 248-261 | Error handling suppression |
+| 5 | WARNING | memory_service.rs + lib.rs | - | Dead code (not wired) |
+| 6 | WARNING | web/mod.rs | 1017-1018 | Query param logs token |
+| 7 | WARNING | web/mod.rs | 972-982 | Timing-attack vulnerability |
+| 8 | WARNING | peer_client.rs | 871-882 | Unused parameter |
+| 9 | NIT | orchestrator/src/main.rs | 228 | API key exposure risk |
+| 10 | NIT | http_server.rs | 426-429 | Permissive CORS |
+| 11 | NIT | docker-compose.yml | 1055 | Image not digest-pinned |
+| 12 | NIT | migrations/008_memory_facts.sql | 12-14 | Suboptimal indexes |
+| 13 | NIT | memory_service.rs | 799-809 | Test bypasses API |
+
+---
+
+## Deployment Recommendation
+
+**DO NOT DEPLOY** until BLOCKER #1 and #2 are fixed:
+- Fix Anthropic API model ID (verify current stable version)
+- Fix NATS auth configuration (either use strong default or disable auth)
+
+**Before production**, also address WARNING items #3, #4, #5:
+- NATS auth command syntax
+- PRD generation error handling
+- Wire memory service into gateway (complete the feature)
+
