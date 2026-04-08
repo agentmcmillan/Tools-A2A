@@ -9,7 +9,7 @@ use a2a_gateway::{
     identity::IdentityStore,
     local_server::LocalGatewayHandler,
     lxc::LxcClient,
-    nats_bus::{Bus, NatsBus},
+    pulsar_bus::EventBus,
     object_store::ObjectStore,
     peer_server::PeerGatewayHandler,
     peer_sync::PeerSyncCoordinator,
@@ -95,9 +95,14 @@ async fn main() -> Result<()> {
     let groups       = Arc::new(GroupStore::new(db.clone()));
     let _contributions = Arc::new(ContributionStore::new(db.clone()));
 
-    // ── NATS bus (optional) ───────────────────────────────────────────────────
-    let nats = NatsBus::connect(&nats_url, &cfg.gateway.name).await;
-    let bus  = Arc::new(Bus::from_option(nats));
+    // ── Event bus: Pulsar (preferred) > NATS (fallback) > Null (dev) ────────
+    let pulsar_url = std::env::var("PULSAR_URL").ok();
+    let bus = Arc::new(EventBus::connect(
+        &cfg.gateway.name,
+        pulsar_url.as_deref(),
+        &nats_url,
+    ).await);
+    info!(bus = bus.name(), "event bus initialized");
 
     // ── Reconciler ───────────────────────────────────────────────────────────
     Reconciler::new(

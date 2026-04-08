@@ -17,7 +17,7 @@
 use anyhow::Result;
 use chrono::Utc;
 use crate::db::Db;
-use crate::nats_bus::Bus;
+use crate::pulsar_bus::EventBus;
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
@@ -28,7 +28,7 @@ pub struct Reconciler {
     db:       Db,
     interval: Duration,
     data_dir: String,
-    bus:       Arc<Bus>,
+    bus:       Arc<EventBus>,
     _gateway:  String,
 }
 
@@ -37,7 +37,7 @@ impl Reconciler {
         db: Db,
         interval_secs: u64,
         data_dir: impl Into<String>,
-        bus: Arc<Bus>,
+        bus: Arc<EventBus>,
         gateway: impl Into<String>,
     ) -> Self {
         Self {
@@ -247,7 +247,7 @@ mod tests {
                 registered_at: Utc::now().to_rfc3339(),
             }).await.unwrap();
         }
-        let r = Reconciler::new(pool.clone(), 30, "/tmp", Arc::new(Bus::Null), "test-gw");
+        let r = Reconciler::new(pool.clone(), 30, "/tmp", Arc::new(EventBus::Null), "test-gw");
         (pool, r)
     }
 

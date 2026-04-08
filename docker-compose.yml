@@ -63,6 +63,7 @@ services:
       ENTROPY_WEBHOOK_URL:   ${ENTROPY_WEBHOOK_URL:-}
       ENTROPY_BEARER_TOKEN:  ${ENTROPY_BEARER_TOKEN:-}
       NATS_URL:              nats://nats:4222
+      PULSAR_URL:            ${PULSAR_URL:-}
       RUST_LOG:              a2a_gateway=info,info
       OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4317
     depends_on:
@@ -176,6 +177,28 @@ services:
       -m 8222
       ${NATS_PASSWORD:+--user ${NATS_USER:-a2a} --pass ${NATS_PASSWORD}}
 
+  # ── Message bus: Apache Pulsar (production) ──────────────────────────────────
+  # Persistent topics, guaranteed delivery, built-in geo-replication.
+  # Set PULSAR_URL=pulsar://pulsar:6650 in gateway env to enable.
+  # Falls back to NATS if Pulsar is unavailable.
+
+  pulsar:
+    image: apachepulsar/pulsar:3.3.4
+    restart: unless-stopped
+    ports:
+      - "6650:6650"   # Binary protocol
+      - "8080:8080"   # HTTP admin
+    command: ["bin/pulsar", "standalone"]
+    volumes:
+      - pulsar-data:/pulsar/data
+    healthcheck:
+      test: ["CMD", "bin/pulsar-admin", "brokers", "healthcheck"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    profiles:
+      - pulsar   # Start with: docker compose --profile pulsar up -d
+
   # ── Cloudflare Tunnel (optional) ───────────────────────────────────────────
   # Exposes :7241 (peer gRPC) and :7242 (A2A HTTP) to the public internet.
   # Set CF_TUNNEL_TOKEN in .env to enable. If unset, tunnel container exits immediately.
@@ -194,4 +217,5 @@ services:
 volumes:
   gateway-data:
   postgres-data:
+  pulsar-data:
   sidecar-sock:

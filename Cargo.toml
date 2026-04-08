@@ -53,6 +53,7 @@ opentelemetry-otlp        = { version = "0.27", features = ["grpc-tonic"] }
 
 # Message bus
 async-nats = { version = "0.38" }
+pulsar     = { version = "6.7", default-features = false, features = ["tokio-runtime"] }
 
 # Error handling
 thiserror = { version = "2" }
