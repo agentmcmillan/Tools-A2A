@@ -187,7 +187,7 @@ services:
     restart: unless-stopped
     ports:
       - "6650:6650"   # Binary protocol
-      - "8080:8080"   # HTTP admin
+      # Admin API on 8080 internal only (not exposed to avoid port conflicts)
     command: ["bin/pulsar", "standalone"]
     volumes:
       - pulsar-data:/pulsar/data
