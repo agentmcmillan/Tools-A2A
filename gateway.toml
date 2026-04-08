@@ -13,7 +13,7 @@ reconcile_interval_secs = 30
 url = "postgres://a2a:a2a@postgres/a2a"
 
 [lxc]
-proxmox_url    = "https://192.168.4.100:8006"
+proxmox_url    = "https://your-proxmox-host:8006"
 # api_token set via env: A2A_PROXMOX_TOKEN
 node           = "proxmox"
 agent_template = 9001

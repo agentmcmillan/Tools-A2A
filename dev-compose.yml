@@ -62,7 +62,9 @@ services:
       A2A_JWT_SECRET: ${A2A_JWT_SECRET:?run install.sh or set A2A_JWT_SECRET in .env}
       # Connect to the NAS NATS hub for cross-gateway hook events.
       # Set to your NAS IP. If NATS unreachable, hooks degrade gracefully.
-      NATS_URL:       ${NATS_URL:-nats://192.168.1.67:4222}
+      # Set NATS_URL in .env to point at your NAS/hub gateway for cross-gateway hooks.
+      # Example: NATS_URL=nats://192.168.1.67:4222
+      NATS_URL:       ${NATS_URL:-nats://127.0.0.1:4222}
       RUST_LOG:       a2a_gateway=info,info
     depends_on:
       postgres:

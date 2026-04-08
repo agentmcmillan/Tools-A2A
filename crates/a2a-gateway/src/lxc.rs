@@ -228,7 +228,7 @@ mod tests {
 
     fn test_cfg() -> LxcConfig {
         LxcConfig {
-            proxmox_url:    "https://192.168.4.100:8006".into(),
+            proxmox_url:    "https://proxmox.example.com:8006".into(),
             node:           "proxmox".into(),
             agent_template: 9001,
             network_bridge: "vmbr0".into(),
