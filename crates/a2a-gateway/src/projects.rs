@@ -11,8 +11,8 @@
 use crate::db::Db;
 use anyhow::{bail, Context, Result};
 use serde::{Deserialize, Serialize};
-use std::time::{SystemTime, UNIX_EPOCH};
 use uuid::Uuid;
+use crate::util::now_secs;
 
 // ── Domain types ─────────────────────────────────────────────────────────────
 
@@ -357,12 +357,6 @@ impl From<ProjectRow> for Project {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-fn now_secs() -> f64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs_f64()
-}
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
 

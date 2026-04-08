@@ -8,7 +8,7 @@
 use anyhow::{bail, Context, Result};
 use jsonwebtoken::{Algorithm, DecodingKey, EncodingKey, Header, Validation, decode, encode};
 use serde::{Deserialize, Serialize};
-use std::time::{SystemTime, UNIX_EPOCH};
+use crate::util::now_secs;
 
 const TOKEN_TTL_SECS: u64 = 3600; // 1 hour
 
@@ -25,7 +25,7 @@ pub struct PeerClaims {
 
 impl PeerClaims {
     pub fn new(issuer: &str, subject: &str, scope: &str) -> Self {
-        let now = now_secs();
+        let now = now_secs() as u64;
         Self {
             iss:   issuer.to_owned(),
             sub:   subject.to_owned(),
@@ -36,7 +36,7 @@ impl PeerClaims {
     }
 
     pub fn is_expired(&self) -> bool {
-        now_secs() > self.exp
+        now_secs() as u64 > self.exp
     }
 }
 
@@ -95,12 +95,6 @@ impl JwtAuth {
     }
 }
 
-fn now_secs() -> u64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs()
-}
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
 

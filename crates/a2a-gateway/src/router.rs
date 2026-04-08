@@ -60,12 +60,20 @@ impl Router {
             return Err(RouterError::HopLimitExceeded { hops: next_hop, max });
         }
 
-        // 3. Enforce call graph (skip for external/anonymous callers).
-        if !caller.is_empty() && !self.config.is_allowed(caller, target) {
-            return Err(RouterError::NotPermitted {
-                caller: caller.into(),
-                target: target.into(),
-            });
+        // 3. Enforce call graph.
+        // Empty caller = external (HTTP :7242) — check if "external" is in call graph.
+        // If "external" is not defined, external callers can reach any agent (backwards compat).
+        let effective_caller = if caller.is_empty() { "external" } else { caller };
+        if !self.config.is_allowed(effective_caller, target) {
+            // Backwards compat: if "external" has no edges, allow all (old behavior)
+            if caller.is_empty() && !self.config.call_graph.edges.contains_key("external") {
+                // No explicit external policy — allow (legacy mode)
+            } else {
+                return Err(RouterError::NotPermitted {
+                    caller: effective_caller.into(),
+                    target: target.into(),
+                });
+            }
         }
 
         // 4. Resolve endpoint from registry.

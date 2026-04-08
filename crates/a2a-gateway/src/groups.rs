@@ -10,8 +10,8 @@ use crate::db::Db;
 use anyhow::{Context, Result};
 use rand::RngCore;
 use serde::{Deserialize, Serialize};
-use std::time::{SystemTime, UNIX_EPOCH};
 use uuid::Uuid;
+use crate::util::now_secs;
 
 const INVITE_TTL_SECS: f64 = 48.0 * 3600.0;
 
@@ -293,9 +293,6 @@ fn random_token() -> String {
     hex::encode(buf)
 }
 
-fn now_secs() -> f64 {
-    SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_secs_f64()
-}
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
 

@@ -52,10 +52,8 @@ async fn main() -> Result<()> {
     std::fs::create_dir_all(&data_dir)?;
 
     // ── Credentials from env ──────────────────────────────────────────────────
-    let jwt_secret = std::env::var("A2A_JWT_SECRET").unwrap_or_else(|_| {
-        tracing::warn!("A2A_JWT_SECRET not set — using insecure default. SET THIS IN PRODUCTION!");
-        "changeme".into()
-    });
+    let jwt_secret = std::env::var("A2A_JWT_SECRET")
+        .expect("A2A_JWT_SECRET is required. Generate with: openssl rand -hex 32");
     let entropy_url = std::env::var("ENTROPY_WEBHOOK_URL").ok();
     let entropy_tok = std::env::var("ENTROPY_BEARER_TOKEN").ok();
     let nats_url    = std::env::var("NATS_URL")

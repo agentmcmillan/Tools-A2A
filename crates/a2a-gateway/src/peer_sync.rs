@@ -24,8 +24,9 @@ use crate::config::PeerConfig;
 use crate::file_sync::FileSyncEngine;
 use crate::peer_client::PeerClient;
 use crate::projects::ProjectStore;
-use crate::task_log::{EntryType, TaskLog};
-use anyhow::Result;
+use crate::task_log::{EntryType, LogEntry, TaskLog};
+use crate::util::now_secs;
+use anyhow::{Context, Result};
 use std::sync::Arc;
 use std::time::Duration;
 use tracing::{info, warn, error};
@@ -41,6 +42,7 @@ pub struct PeerSyncCoordinator {
     file_sync:      Arc<FileSyncEngine>,
     task_log:       Arc<TaskLog>,
     projects:       ProjectStore,
+    db:             crate::db::Db,
     sync_interval:  Duration,
 }
 
@@ -61,7 +63,8 @@ impl PeerSyncCoordinator {
             auth,
             file_sync,
             task_log,
-            projects: ProjectStore::new(db),
+            projects: ProjectStore::new(db.clone()),
+            db,
             sync_interval: Duration::from_secs(
                 if sync_interval_secs == 0 { DEFAULT_SYNC_INTERVAL } else { sync_interval_secs }
             ),
@@ -134,17 +137,62 @@ impl PeerSyncCoordinator {
 
         let log_sync = client.sync_task_log(&remote.project_id, local_cursor).await?;
         if let Some(local_proj) = &local {
-            for entry in log_sync.entries {
-                // Write entries from the peer into our local task log.
-                // We trust the gateway_name + signature; skip if already at or beyond cursor.
-                self.task_log.append(
+            for proto_entry in log_sync.entries {
+                // Reject entries whose gateway_name doesn't match the peer we're syncing from.
+                // A compromised peer must not inject entries pretending to be another gateway.
+                if proto_entry.gateway_name != peer.name {
+                    warn!(
+                        peer = %peer.name,
+                        entry_id = %proto_entry.id,
+                        claimed_gateway = %proto_entry.gateway_name,
+                        "rejected peer entry: gateway_name mismatch"
+                    );
+                    continue;
+                }
+
+                // Reconstruct a LogEntry from the proto to verify the HMAC signature.
+                let log_entry = LogEntry {
+                    id:           proto_entry.id,
+                    project_id:   remote.project_id.clone(),
+                    gateway_name: proto_entry.gateway_name,
+                    agent_name:   proto_entry.agent_name,
+                    entry_type:   EntryType::from_str(&proto_entry.entry_type),
+                    content:      proto_entry.content,
+                    cursor:       proto_entry.cursor,
+                    created_at:   proto_entry.created_at,
+                    todo_id:      None,
+                    signature:    if proto_entry.signature.is_empty() { None } else { Some(proto_entry.signature) },
+                    task_status:  None,
+                    valid_from:   Some(proto_entry.created_at),
+                    valid_to:     None,
+                };
+
+                // Verify the peer's HMAC signature before accepting the entry.
+                if !self.task_log.verify_entry(&log_entry) {
+                    warn!(
+                        peer = %peer.name,
+                        entry_id = %log_entry.id,
+                        "rejected peer entry: HMAC signature verification failed"
+                    );
+                    continue;
+                }
+
+                // Insert the entry preserving the peer's original signature and cursor.
+                self.task_log.insert_peer_entry(
                     &local_proj.id,
-                    &entry.gateway_name,
-                    &entry.agent_name,
-                    EntryType::from_str(&entry.entry_type),
-                    &entry.content,
-                    None,
-                ).await.ok(); // best-effort; duplicate cursors will be ignored naturally
+                    &log_entry,
+                    &peer.name,
+                ).await.ok(); // best-effort; ON CONFLICT DO NOTHING handles duplicates
+            }
+
+            // Update peer cursor state for delta sync.
+            if log_sync.head_cursor > local_cursor {
+                Self::update_peer_cursor(
+                    &self.db,
+                    &peer.name,
+                    &local_proj.id,
+                    log_sync.head_cursor,
+                ).await.ok();
             }
         }
 
@@ -186,6 +234,29 @@ impl PeerSyncCoordinator {
                   snapshot = %remote.snapshot_id, "snapshot applied");
         }
 
+        Ok(())
+    }
+
+    /// Upsert the last-seen cursor from a peer for a given project.
+    async fn update_peer_cursor(
+        db: &crate::db::Db,
+        peer_name: &str,
+        project_id: &str,
+        cursor: i64,
+    ) -> Result<()> {
+        sqlx::query(
+            "INSERT INTO peer_cursor_state (peer_name, project_id, last_cursor, updated_at) \
+             VALUES ($1, $2, $3, $4) \
+             ON CONFLICT (peer_name, project_id) \
+             DO UPDATE SET last_cursor = $3, updated_at = $4"
+        )
+        .bind(peer_name)
+        .bind(project_id)
+        .bind(cursor)
+        .bind(now_secs())
+        .execute(db)
+        .await
+        .context("update peer cursor state")?;
         Ok(())
     }
 }

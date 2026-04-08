@@ -17,7 +17,6 @@ use crate::projects::ProjectStore;
 use anyhow::{bail, Context, Result};
 use serde::{Deserialize, Serialize};
 use std::path::Path;
-use std::time::{SystemTime, UNIX_EPOCH};
 
 // ── Domain types ─────────────────────────────────────────────────────────────
 
@@ -251,6 +250,7 @@ impl FileSyncEngine {
 
 use crate::object_store::parse_transcript;
 use std::collections::HashMap;
+use crate::util::now_secs;
 
 fn compute_diff(old_text: Option<&str>, new_text: &str) -> SnapshotDiff {
     let old_entries: HashMap<String, TranscriptEntry> = old_text
@@ -311,12 +311,6 @@ impl From<SnapRow> for Snapshot {
     }
 }
 
-fn now_secs() -> f64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs_f64()
-}
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
 

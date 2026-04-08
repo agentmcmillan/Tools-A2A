@@ -37,8 +37,8 @@ use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
-use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::sync::RwLock;
+use crate::util::now_secs;
 
 // ── Domain types ─────────────────────────────────────────────────────────────
 
@@ -308,9 +308,6 @@ impl OnboardingManager {
     }
 }
 
-fn now_secs() -> f64 {
-    SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_secs_f64()
-}
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
 

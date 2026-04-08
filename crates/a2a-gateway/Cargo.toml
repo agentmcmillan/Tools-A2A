@@ -40,7 +40,6 @@ opentelemetry_sdk     = { workspace = true }
 opentelemetry-otlp    = { workspace = true }
 
 async-nats = { workspace = true }
-casbin     = { workspace = true }
 thiserror  = { workspace = true }
 anyhow     = { workspace = true }
 uuid       = { workspace = true }

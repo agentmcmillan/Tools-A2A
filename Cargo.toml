@@ -51,9 +51,6 @@ opentelemetry             = { version = "0.27" }
 opentelemetry_sdk         = { version = "0.27", features = ["rt-tokio"] }
 opentelemetry-otlp        = { version = "0.27", features = ["grpc-tonic"] }
 
-# Policy
-casbin = { version = "2", default-features = false, features = ["runtime-tokio", "logging"] }
-
 # Message bus
 async-nats = { version = "0.38" }
 

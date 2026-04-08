@@ -12,8 +12,8 @@ use anyhow::{Context, Result};
 use hmac::{Hmac, Mac};
 use serde::{Deserialize, Serialize};
 use sha2::Sha256;
-use std::time::{SystemTime, UNIX_EPOCH};
 use uuid::Uuid;
+use crate::util::now_secs;
 
 type HmacSha256 = Hmac<Sha256>;
 
@@ -291,6 +291,41 @@ impl TaskLog {
         );
         sig == &expected
     }
+
+    /// Insert a task log entry received from a peer, preserving its original signature.
+    /// Does NOT re-sign or generate a new cursor — uses the peer's cursor.
+    /// Skips entries that already exist (idempotent via ON CONFLICT).
+    pub async fn insert_peer_entry(
+        &self,
+        project_id: &str,
+        entry: &LogEntry,
+        _source_gateway: &str,
+    ) -> Result<()> {
+        sqlx::query(
+            "INSERT INTO task_log \
+             (id, project_id, gateway_name, agent_name, entry_type, content, cursor, \
+              created_at, todo_id, signature, task_status, valid_from, valid_to) \
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) \
+             ON CONFLICT (id) DO NOTHING"
+        )
+        .bind(&entry.id)
+        .bind(project_id)
+        .bind(&entry.gateway_name)
+        .bind(&entry.agent_name)
+        .bind(entry.entry_type.as_str())
+        .bind(&entry.content)
+        .bind(entry.cursor)
+        .bind(entry.created_at)
+        .bind(entry.todo_id)
+        .bind(&entry.signature)
+        .bind(entry.task_status.as_ref().map(|s| s.as_str()))
+        .bind(entry.valid_from)
+        .bind(entry.valid_to)
+        .execute(&self.db)
+        .await
+        .context("insert peer entry")?;
+        Ok(())
+    }
 }
 
 // ── SQLx row mapping ──────────────────────────────────────────────────────────
@@ -332,12 +367,6 @@ impl From<LogRow> for LogEntry {
     }
 }
 
-fn now_secs() -> f64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs_f64()
-}
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
 

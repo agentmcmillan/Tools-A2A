@@ -36,4 +36,5 @@ pub mod lxc;
 
 // Cross-cutting
 pub mod error_class;
+pub mod util;
 pub mod memory_service;

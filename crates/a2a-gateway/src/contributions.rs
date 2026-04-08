@@ -20,8 +20,8 @@
 use crate::db::Db;
 use anyhow::{bail, Context, Result};
 use serde::{Deserialize, Serialize};
-use std::time::{SystemTime, UNIX_EPOCH};
 use uuid::Uuid;
+use crate::util::now_secs;
 
 // ── Domain types ─────────────────────────────────────────────────────────────
 
@@ -189,8 +189,7 @@ impl ContributionStore {
             "INSERT INTO contribution_votes \
              (id, proposal_id, gateway_name, agent_name, vote, reason, voted_at) \
              VALUES ($1,$2,$3,$4,$5,$6,$7) \
-             ON CONFLICT (proposal_id, gateway_name, agent_name) \
-             DO UPDATE SET vote = excluded.vote, reason = excluded.reason, voted_at = excluded.voted_at"
+             ON CONFLICT (proposal_id, gateway_name, agent_name) DO NOTHING"
         )
         .bind(&id).bind(proposal_id).bind(gateway_name).bind(agent_name)
         .bind(vote.as_str()).bind(reason).bind(now)
@@ -300,9 +299,6 @@ impl From<PropRow> for Proposal {
     }
 }
 
-fn now_secs() -> f64 {
-    SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_secs_f64()
-}
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
 

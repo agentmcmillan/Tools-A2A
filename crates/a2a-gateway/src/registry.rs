@@ -7,7 +7,7 @@
 /// └──────────────────────────────────────────────────────┘
 ///
 /// Agents self-register on startup and send periodic Heartbeat RPCs.
-/// If the gateway restarts the SQLite copy is reloaded into DashMap.
+/// If the gateway restarts the PostgreSQL rows are reloaded into DashMap.
 
 use anyhow::Result;
 use chrono::Utc;
@@ -38,7 +38,7 @@ pub struct Registry {
 }
 
 impl Registry {
-    /// Create registry and reload any existing agents from SQLite.
+    /// Create registry and reload any existing agents from PostgreSQL.
     pub async fn new(db: Db) -> Result<Self> {
         let reg = Self {
             inner: Arc::new(DashMap::new()),
@@ -114,7 +114,7 @@ impl Registry {
         self.inner.len()
     }
 
-    /// Reload all persisted agents from SQLite into the DashMap cache.
+    /// Reload all persisted agents from PostgreSQL into the DashMap cache.
     async fn reload_from_db(&self) -> Result<()> {
         let rows = sqlx::query_as::<_, DbAgent>(
             "SELECT name, version, endpoint, capabilities, soul_toml, last_seen, registered_at FROM agents"

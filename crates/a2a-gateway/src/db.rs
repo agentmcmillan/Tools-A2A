@@ -61,5 +61,9 @@ async fn run_migrations(pool: &Db) -> Result<()> {
         .await
         .context("running migration 008_memory_facts")?;
 
+    pool.execute(sqlx::raw_sql(include_str!("migrations/009_peer_cursors.sql")))
+        .await
+        .context("running migration 009_peer_cursors")?;
+
     Ok(())
 }

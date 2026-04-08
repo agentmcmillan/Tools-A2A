@@ -7,7 +7,7 @@
 use crate::db::Db;
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
-use std::time::{SystemTime, UNIX_EPOCH};
+use crate::util::now_secs;
 
 // ── Domain types ─────────────────────────────────────────────────────────────
 
@@ -224,9 +224,6 @@ impl From<MemoryFactRow> for MemoryFact {
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
-fn now_secs() -> f64 {
-    SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_secs_f64()
-}
 
 // ── Tests ────────────────────────────────────────────────────────────────────
 
