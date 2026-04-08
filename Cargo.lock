@@ -1963,6 +1963,7 @@ version = "0.1.0"
 dependencies = [
  "a2a-sdk",
  "anyhow",
+ "reqwest",
  "serde_json",
  "tokio",
  "tracing",

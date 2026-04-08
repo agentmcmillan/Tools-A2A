@@ -170,7 +170,28 @@ services:
     ports:
       - "4222:4222"   # Client connections
       - "8222:8222"   # HTTP monitoring
-    command: ["-m", "8222"]
+    command:
+      - "-m"
+      - "8222"
+      - "--user"
+      - "${NATS_USER:-a2a}"
+      - "--pass"
+      - "${NATS_PASSWORD:-}"
+
+  # ── Cloudflare Tunnel (optional) ───────────────────────────────────────────
+  # Exposes :7241 (peer gRPC) and :7242 (A2A HTTP) to the public internet.
+  # Set CF_TUNNEL_TOKEN in .env to enable. If unset, tunnel container exits immediately.
+
+  cloudflared:
+    image: cloudflare/cloudflared:2024.4.1
+    restart: unless-stopped
+    command: ["tunnel", "--no-autoupdate", "run"]
+    environment:
+      TUNNEL_TOKEN: ${CF_TUNNEL_TOKEN:-}
+    depends_on:
+      - gateway
+    profiles:
+      - tunnel   # Only starts with: docker compose --profile tunnel up -d
 
 volumes:
   gateway-data:

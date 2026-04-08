@@ -26,8 +26,9 @@ use crate::projects::ProjectStore;
 use crate::registry::Registry;
 use crate::task_log::TaskLog;
 use axum::{
-    extract::{Path, State},
-    http::StatusCode,
+    extract::{Path, Query, State},
+    http::{Request, StatusCode},
+    middleware::{self, Next},
     response::{Html, IntoResponse, Redirect, Response},
     routing::{get, post}, Json, Router,
 };
@@ -50,6 +51,10 @@ pub struct AppState {
     pub env:           Arc<Environment<'static>>,
     /// Optional Proxmox LXC client — None when [lxc] section absent from gateway.toml
     pub lxc:           Option<Arc<LxcClient>>,
+    /// Optional bearer token for web dashboard auth.
+    /// When Some, all routes (except /health) require `Authorization: Bearer <token>`
+    /// or `?token=<token>` query parameter.
+    pub web_token:     Option<String>,
 }
 
 impl AppState {
@@ -61,6 +66,7 @@ impl AppState {
         entropy_token:   Option<String>,
         registry:     Option<Registry>,
         lxc:          Option<LxcClient>,
+        web_token:    Option<String>,
     ) -> Self {
         let gw   = gateway_name.into();
         let tl   = Arc::new(TaskLog::new(db.clone(), jwt_secret.as_ref()));
@@ -93,6 +99,7 @@ impl AppState {
             gateway_name:  gw,
             env,
             lxc:           lxc.map(Arc::new),
+            web_token,
         }
     }
 
@@ -108,7 +115,8 @@ impl AppState {
 // ── Router ────────────────────────────────────────────────────────────────────
 
 pub fn router(state: AppState) -> Router {
-    Router::new()
+    // Authenticated routes — guarded by auth_middleware when A2A_WEB_TOKEN is set.
+    let protected = Router::new()
         .route("/",                  get(root_redirect))
         .route("/dashboard",         get(projects::dashboard))
         .route("/projects/:id",      get(projects::project_detail))
@@ -126,8 +134,75 @@ pub fn router(state: AppState) -> Router {
         .route("/lxc",               get(lxc_list))
         .route("/lxc/spawn",         post(lxc_spawn))
         .route("/lxc/:vmid/stop",    post(lxc_stop))
-        .route("/health",            get(health))
-        .with_state(state)
+        .route_layer(middleware::from_fn_with_state(state.clone(), auth_middleware));
+
+    // Public routes — no auth required.
+    let public = Router::new()
+        .route("/health", get(health));
+
+    public.merge(protected).with_state(state)
+}
+
+// ── Auth middleware ───────────────────────────────────────────────────────────
+
+/// Timing-safe string comparison to prevent timing side-channels on token checks.
+fn constant_time_eq(a: &str, b: &str) -> bool {
+    if a.len() != b.len() {
+        return false;
+    }
+    a.as_bytes()
+        .iter()
+        .zip(b.as_bytes())
+        .fold(0u8, |acc, (x, y)| acc | (x ^ y))
+        == 0
+}
+
+/// Query parameter used for browser-friendly token auth (`?token=<token>`).
+#[derive(Deserialize, Default)]
+struct TokenQuery {
+    token: Option<String>,
+}
+
+/// Middleware that enforces bearer-token auth on the web dashboard.
+///
+/// When `AppState::web_token` is `None`, all requests pass through (backwards compatible).
+/// When set, the request must carry the token as either:
+///   - `Authorization: Bearer <token>` header, OR
+///   - `?token=<token>` query parameter (for browser access).
+async fn auth_middleware(
+    State(state): State<AppState>,
+    Query(query): Query<TokenQuery>,
+    req: Request<axum::body::Body>,
+    next: Next,
+) -> Response {
+    // If no token configured, auth is disabled — pass through.
+    let expected = match &state.web_token {
+        Some(t) => t,
+        None => return next.run(req).await,
+    };
+
+    // Try Authorization header first.
+    let header_token = req
+        .headers()
+        .get("authorization")
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.strip_prefix("Bearer "))
+        .map(|s| s.trim().to_owned());
+
+    // Fall back to query parameter.
+    let provided = header_token.or(query.token);
+
+    match provided {
+        Some(ref tok) if constant_time_eq(tok, expected) => next.run(req).await,
+        _ => (
+            StatusCode::UNAUTHORIZED,
+            Json(serde_json::json!({
+                "error": "unauthorized",
+                "message": "Missing or invalid bearer token. Supply via Authorization header or ?token= query parameter."
+            })),
+        )
+            .into_response(),
+    }
 }
 
 // ── Handlers ──────────────────────────────────────────────────────────────────

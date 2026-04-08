@@ -90,6 +90,8 @@ enum AgentsAction {
         #[arg(long, default_value = "")]
         caller: String,
     },
+    /// Generate a PRD from the orchestrator's current state
+    Prd,
 }
 
 #[derive(Subcommand)]
@@ -235,6 +237,8 @@ async fn main() -> Result<()> {
             AgentsAction::List => cmd_agents_list(&mut client).await?,
             AgentsAction::Call { name, payload, caller } =>
                 cmd_agents_call(&mut client, &name, &payload, &caller).await?,
+            AgentsAction::Prd =>
+                cmd_agents_prd(&mut client).await?,
         },
         Commands::Identity { action } => match action {
             IdentityAction::Soul { agent }       => cmd_identity_soul(&mut client, &agent).await?,
@@ -299,6 +303,33 @@ async fn cmd_agents_call(
     let result: serde_json::Value = serde_json::from_slice(&resp.result)
         .unwrap_or_else(|_| serde_json::Value::String(String::from_utf8_lossy(&resp.result).into_owned()));
     println!("{}", serde_json::to_string_pretty(&result)?);
+    Ok(())
+}
+
+async fn cmd_agents_prd(client: &mut LocalGatewayClient<Channel>) -> Result<()> {
+    let resp = client.call(CallRequest {
+        target_agent: "orchestrator".to_owned(),
+        method:       "generate_prd".to_owned(),
+        payload:      b"{}".to_vec(),
+        trace_id:     Uuid::new_v4().to_string(),
+        caller:       "cli".to_owned(),
+        hop_count:    0,
+    }).await?.into_inner();
+
+    if !resp.error.is_empty() {
+        eprintln!("error: {}", resp.error);
+        std::process::exit(1);
+    }
+
+    let result: serde_json::Value = serde_json::from_slice(&resp.result)
+        .unwrap_or_else(|_| serde_json::Value::String(String::from_utf8_lossy(&resp.result).into_owned()));
+
+    // If the result contains a "prd" field, print just the PRD content
+    if let Some(prd) = result.get("prd").and_then(|v| v.as_str()) {
+        println!("{prd}");
+    } else {
+        println!("{}", serde_json::to_string_pretty(&result)?);
+    }
     Ok(())
 }
 

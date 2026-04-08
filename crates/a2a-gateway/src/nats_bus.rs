@@ -36,8 +36,22 @@ pub struct NatsBus {
 
 impl NatsBus {
     /// Connect to NATS. Returns None (not an error) if NATS is unavailable.
+    /// If NATS_USER and NATS_PASSWORD env vars are set, authenticates with user/pass.
     pub async fn connect(url: &str, gateway_name: impl Into<String>) -> Option<Self> {
-        match async_nats::connect(url).await {
+        let connect_result = match (
+            std::env::var("NATS_USER").ok(),
+            std::env::var("NATS_PASSWORD").ok(),
+        ) {
+            (Some(user), Some(pass)) if !user.is_empty() && !pass.is_empty() => {
+                info!(nats_url = %url, user = %user, "NATS connecting with auth");
+                async_nats::ConnectOptions::with_user_and_password(user, pass)
+                    .connect(url)
+                    .await
+            }
+            _ => async_nats::connect(url).await,
+        };
+
+        match connect_result {
             Ok(client) => {
                 let gn = gateway_name.into();
                 info!(nats_url = %url, gateway = %gn, "NATS connected");

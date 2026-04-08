@@ -27,12 +27,24 @@ pub struct PeerClient {
 }
 
 impl PeerClient {
-    pub async fn connect(endpoint: &str, auth: JwtAuth, peer_name: impl Into<String>) -> Result<Self> {
-        let channel = Channel::from_shared(endpoint.to_owned())
-            .context("invalid peer endpoint")?
+    /// Connect to a peer gateway. If `use_tls` is false, connects over plain gRPC
+    /// (suitable for same-LAN peers). JWT auth is always required regardless of TLS.
+    pub async fn connect(endpoint: &str, auth: JwtAuth, peer_name: impl Into<String>, use_tls: bool) -> Result<Self> {
+        let channel_builder = Channel::from_shared(endpoint.to_owned())
+            .context("invalid peer endpoint")?;
+
+        if !use_tls {
+            tracing::info!(peer = endpoint, "LAN peer mode — connecting without TLS");
+        }
+        // Note: tonic Channel handles http:// vs https:// scheme automatically.
+        // For explicit mTLS with client certs, configure tls_config() on the channel.
+        // That's a Phase 4 enhancement — currently JWT handles peer auth.
+
+        let channel = channel_builder
             .connect()
             .await
             .with_context(|| format!("connecting to peer {endpoint}"))?;
+
         Ok(Self {
             inner:     PeerGatewayClient::new(channel),
             auth,

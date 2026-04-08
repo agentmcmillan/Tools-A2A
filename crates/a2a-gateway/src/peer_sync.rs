@@ -95,6 +95,7 @@ impl PeerSyncCoordinator {
             &peer.endpoint,
             self.auth.clone(),
             &peer.name,
+            peer.tls,
         ).await?;
 
         // Ping first

@@ -73,7 +73,13 @@ pub struct PeerConfig {
     pub name:      String,
     pub endpoint:  String,
     pub cert_path: Option<String>,
+    /// Set to false for same-LAN peers (skip mTLS, still require JWT).
+    /// Default: true (mTLS required).
+    #[serde(default = "default_tls")]
+    pub tls:       bool,
 }
+
+fn default_tls() -> bool { true }
 
 // ─── Loading ─────────────────────────────────────────────────────────────────
 

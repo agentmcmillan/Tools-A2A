@@ -1,13 +1,15 @@
 use crate::registry::Registry;
 use axum::{
     extract::State,
-    http::StatusCode,
+    http::{HeaderValue, Method, StatusCode},
+    middleware,
     response::Json,
     routing::{get, post},
     Router,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
+use tower_http::cors::CorsLayer;
 
 // ── State ─────────────────────────────────────────────────────────────────────
 
@@ -21,11 +23,33 @@ pub struct HttpState {
 // ── Router ────────────────────────────────────────────────────────────────────
 
 pub fn router(state: HttpState) -> Router {
+    // CORS: allow any origin for A2A interop (agents call from various hosts)
+    let cors = CorsLayer::new()
+        .allow_origin(tower_http::cors::Any)
+        .allow_methods([Method::GET, Method::POST, Method::OPTIONS])
+        .allow_headers(tower_http::cors::Any);
+
     Router::new()
         .route("/.well-known/agent.json", get(agent_card))
         .route("/health",                 get(health))
         .route("/",                       post(jsonrpc_dispatch))
+        .layer(middleware::from_fn(security_headers))
+        .layer(cors)
         .with_state(state)
+}
+
+/// Add security headers to every response on the A2A HTTP port.
+async fn security_headers(
+    req: axum::http::Request<axum::body::Body>,
+    next: middleware::Next,
+) -> axum::response::Response {
+    let mut resp = next.run(req).await;
+    let headers = resp.headers_mut();
+    headers.insert("x-content-type-options", HeaderValue::from_static("nosniff"));
+    headers.insert("x-frame-options", HeaderValue::from_static("DENY"));
+    headers.insert("x-xss-protection", HeaderValue::from_static("1; mode=block"));
+    headers.insert("referrer-policy", HeaderValue::from_static("no-referrer"));
+    resp
 }
 
 // ── Agent Card ────────────────────────────────────────────────────────────────

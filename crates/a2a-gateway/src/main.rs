@@ -60,6 +60,7 @@ async fn main() -> Result<()> {
     let entropy_tok = std::env::var("ENTROPY_BEARER_TOKEN").ok();
     let nats_url    = std::env::var("NATS_URL")
         .unwrap_or_else(|_| "nats://127.0.0.1:4222".into());
+    let web_token   = std::env::var("A2A_WEB_TOKEN").ok();
 
     // ── Auth (JWT, used for peer boundary) ───────────────────────────────────
     let auth = JwtAuth::new(jwt_secret.as_bytes(), &cfg.gateway.name);
@@ -154,6 +155,7 @@ async fn main() -> Result<()> {
         entropy_tok,
         Some(registry.clone()),
         lxc_client,
+        web_token,
     );
     let web_addr: SocketAddr = format!("0.0.0.0:{}", cfg.gateway.port_web).parse()?;
     let web_listener = tokio::net::TcpListener::bind(web_addr).await?;
