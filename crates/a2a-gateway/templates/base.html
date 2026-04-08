@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}a2a Gateway{% endblock %} — {{ gateway_name }}</title>
+  <script src="https://unpkg.com/htmx.org@1.9.12/dist/htmx.min.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: system-ui, sans-serif; background: #0f0f0f; color: #e8e8e8; line-height: 1.5; }
+    a { color: #7dd3fc; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    nav { background: #1a1a2e; border-bottom: 1px solid #2a2a4a; padding: 0.75rem 2rem;
+          display: flex; align-items: center; gap: 2rem; }
+    nav .brand { font-weight: 700; font-size: 1.1rem; color: #7dd3fc; }
+    nav .gw { font-size: 0.85rem; color: #94a3b8; }
+    main { max-width: 1200px; margin: 0 auto; padding: 2rem; }
+    h1 { font-size: 1.6rem; margin-bottom: 1.5rem; }
+    h2 { font-size: 1.2rem; margin: 1.5rem 0 0.75rem; color: #94a3b8; text-transform: uppercase;
+         letter-spacing: 0.05em; font-size: 0.8rem; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+    th { text-align: left; padding: 0.5rem 0.75rem; border-bottom: 1px solid #2a2a4a;
+         color: #94a3b8; font-weight: 600; font-size: 0.8rem; text-transform: uppercase; }
+    td { padding: 0.5rem 0.75rem; border-bottom: 1px solid #1a1a1a; }
+    tr:hover td { background: #1a1a2e; }
+    .badge { display: inline-block; padding: 0.15rem 0.5rem; border-radius: 9999px;
+             font-size: 0.75rem; font-weight: 600; }
+    .badge-lan  { background: #1e3a5f; color: #7dd3fc; }
+    .badge-grp  { background: #1e4a3a; color: #6ee7b7; }
+    .badge-pub  { background: #4a3a1e; color: #fbbf24; }
+    .badge-done  { background: #1e4a1e; color: #86efac; }
+    .badge-open  { background: #3a2a1e; color: #fdba74; }
+    .badge-voting{ background: #2a1e4a; color: #c4b5fd; }
+    .badge-active{ background: #4a1e1e; color: #fca5a5; }
+    .card { background: #161625; border: 1px solid #2a2a4a; border-radius: 8px; padding: 1.25rem; margin-bottom: 1rem; }
+    .form-row { display: flex; gap: 0.75rem; align-items: flex-end; flex-wrap: wrap; margin-top: 0.5rem; }
+    input, textarea, select { background: #1a1a2e; border: 1px solid #2a2a4a; color: #e8e8e8;
+                               padding: 0.4rem 0.6rem; border-radius: 4px; font-size: 0.9rem; }
+    input:focus, textarea:focus { outline: 2px solid #7dd3fc; }
+    button { cursor: pointer; padding: 0.4rem 0.9rem; border: none; border-radius: 4px;
+             font-size: 0.9rem; font-weight: 600; }
+    .btn-primary { background: #3b5bdb; color: #fff; }
+    .btn-primary:hover { background: #4c6ef5; }
+    .btn-danger  { background: #c0392b; color: #fff; }
+    .btn-danger:hover  { background: #e74c3c; }
+    .entry-focus   { border-left: 3px solid #7dd3fc; }
+    .entry-done    { border-left: 3px solid #86efac; }
+    .entry-blocked { border-left: 3px solid #fca5a5; }
+    .entry-note    { border-left: 3px solid #fbbf24; }
+    .prompt-box { background: #1a2a3a; border: 1px solid #3b5bdb; border-radius: 8px; padding: 1.25rem; margin: 1rem 0; }
+    .prompt-box p { margin-bottom: 0.75rem; white-space: pre-wrap; }
+    .mono { font-family: 'SF Mono', monospace; font-size: 0.85rem; }
+  </style>
+</head>
+<body>
+  <nav>
+    <span class="brand">a2a</span>
+    <a href="/dashboard">Dashboard</a>
+    <span class="gw">{{ gateway_name }}</span>
+  </nav>
+  <main>
+    {% block content %}{% endblock %}
+  </main>
+</body>
+</html>

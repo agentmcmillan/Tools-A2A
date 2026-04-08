@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% block title %}Contribution{% endblock %}
+
+{% block content %}
+<h1>Contribution Proposal</h1>
+
+<div class="card">
+  <div style="display:flex;justify-content:space-between;margin-bottom:0.75rem">
+    <strong>{{ proposal.proposer_gateway }}</strong>
+    <span class="badge
+      {% if proposal.status == 'accepted' %}badge-done
+      {% elif proposal.status == 'rejected' %}badge-active
+      {% elif proposal.status == 'voting' %}badge-voting
+      {% else %}badge-open{% endif %}">
+      {{ proposal.status }}
+    </span>
+  </div>
+  <p>{{ proposal.description }}</p>
+  <p style="font-size:0.8rem;color:#94a3b8;margin-top:0.5rem">
+    Gateway count: {{ proposal.gateway_count }}
+    {% if proposal.gateway_count > 2 %} — agents vote (majority)
+    {% else %} — PR review required{% endif %}
+  </p>
+</div>
+
+{% if proposal.status == "voting" %}
+<div class="card">
+  <h2>Cast vote</h2>
+  <form hx-post="/projects/{{ proposal.project_id }}/contributions/{{ proposal.id }}/vote"
+        hx-target="#vote-result" hx-swap="innerHTML">
+    <div class="form-row">
+      <input type="text" name="agent_name" placeholder="Your agent name" style="width:160px">
+      <input type="text" name="reason" placeholder="Reason (optional)" style="flex:1">
+      <button type="submit" name="vote" value="approve" class="btn-primary">Approve</button>
+      <button type="submit" name="vote" value="reject"  class="btn-danger">Reject</button>
+    </div>
+  </form>
+  <div id="vote-result" style="margin-top:0.75rem"></div>
+</div>
+{% endif %}
+
+{% if proposal.status == "pr_pending" %}
+<div class="card">
+  <h2>Review PR</h2>
+  <p style="font-size:0.85rem;margin-bottom:0.75rem;color:#94a3b8">
+    Only 2 gateways are attached — this requires a PR review by the origin owner.
+  </p>
+  <form hx-post="/projects/{{ proposal.project_id }}/contributions/{{ proposal.id }}/review"
+        hx-target="#review-result" hx-swap="innerHTML">
+    <div class="form-row">
+      <button type="submit" name="action" value="accept" class="btn-primary">Accept PR</button>
+      <button type="submit" name="action" value="reject" class="btn-danger">Reject PR</button>
+    </div>
+  </form>
+  <div id="review-result" style="margin-top:0.75rem"></div>
+</div>
+{% endif %}
+{% endblock %}

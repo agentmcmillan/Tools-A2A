@@ -1,0 +1,78 @@
+# ── Developer-local A2A stack ─────────────────────────────────────────────────
+#
+# Lightweight compose for individual developer machines.
+# Runs: gateway + postgres + optional NATS connection to the NAS hub.
+# Agents run as bare processes (cargo run) for fast iteration.
+#
+# This is NOT the full production stack (docker-compose.yml).
+# It's designed for the "Option B" topology where each developer runs their own
+# gateway and the NAS acts as a sync hub.
+#
+# Usage:
+#   cp .env.example .env       # edit POSTGRES_PASSWORD, A2A_JWT_SECRET
+#   docker compose -f dev-compose.yml up -d
+#   a2a health                 # verify gateway is up
+#   a2a peer add --name hub --endpoint http://192.168.1.67:7241  # peer with NAS
+#
+# Then run agents locally:
+#   cargo run -p orchestrator
+#   cargo run -p research
+
+services:
+
+  # ── PostgreSQL ───────────────────────────────────────────────────────────────
+
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER:     a2a
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?run install.sh or set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB:       a2a
+    volumes:
+      - pg-data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U a2a -d a2a"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # ── Gateway ──────────────────────────────────────────────────────────────────
+
+  gateway:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: gateway
+    image: a2a-gateway:latest
+    restart: unless-stopped
+    ports:
+      - "7240:7240"   # LAN agent gRPC
+      - "7241:7241"   # Peer gRPC
+      - "7242:7242"   # HTTP: A2A spec + health
+      - "7243:7243"   # Web dashboard
+    volumes:
+      - gateway-data:/data
+      - ./dev-gateway.toml:/app/gateway.toml:ro
+    environment:
+      A2A_CONFIG:     /app/gateway.toml
+      DATABASE_URL:   postgres://a2a:${POSTGRES_PASSWORD:?required}@postgres/a2a
+      A2A_JWT_SECRET: ${A2A_JWT_SECRET:?run install.sh or set A2A_JWT_SECRET in .env}
+      # Connect to the NAS NATS hub for cross-gateway hook events.
+      # Set to your NAS IP. If NATS unreachable, hooks degrade gracefully.
+      NATS_URL:       ${NATS_URL:-nats://192.168.1.67:4222}
+      RUST_LOG:       a2a_gateway=info,info
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:7242/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+volumes:
+  pg-data:
+  gateway-data:

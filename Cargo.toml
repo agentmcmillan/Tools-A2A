@@ -1,0 +1,90 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/a2a-proto",
+    "crates/a2a-gateway",
+    "crates/a2a-sdk",
+    "crates/a2a-sidecar",
+    "crates/a2a-cli",
+    "agents/orchestrator",
+    "agents/research",
+    "agents/writer",
+]
+
+[workspace.dependencies]
+# Async runtime
+tokio = { version = "1", features = ["full"] }
+
+# gRPC / protobuf
+tonic        = { version = "0.12" }
+tonic-build  = { version = "0.12" }
+prost        = { version = "0.13" }
+
+# HTTP
+axum         = { version = "0.7" }
+reqwest      = { version = "0.12", features = ["json", "rustls-tls"], default-features = false }
+tower        = { version = "0.5" }
+tower-http   = { version = "0.6", features = ["trace", "cors"] }
+
+# TLS
+rustls                    = { version = "0.23" }
+tokio-rustls              = { version = "0.26" }
+rustls-pemfile            = { version = "2" }
+rcgen                     = { version = "0.13" }
+
+# Auth
+jsonwebtoken = { version = "9" }
+
+# Serialisation
+serde        = { version = "1", features = ["derive"] }
+serde_json   = { version = "1" }
+toml         = { version = "0.8" }
+
+# Database
+sqlx = { version = "0.8", features = ["postgres", "runtime-tokio", "migrate", "macros"] }
+
+# Observability
+tracing                   = { version = "0.1" }
+tracing-subscriber        = { version = "0.3", features = ["json", "env-filter"] }
+tracing-opentelemetry     = { version = "0.27" }
+opentelemetry             = { version = "0.27" }
+opentelemetry_sdk         = { version = "0.27", features = ["rt-tokio"] }
+opentelemetry-otlp        = { version = "0.27", features = ["grpc-tonic"] }
+
+# Policy
+casbin = { version = "2", default-features = false, features = ["runtime-tokio", "logging"] }
+
+# Message bus
+async-nats = { version = "0.38" }
+
+# Error handling
+thiserror = { version = "2" }
+anyhow    = { version = "1" }
+
+# CLI
+clap = { version = "4", features = ["derive"] }
+
+# Utilities
+uuid         = { version = "1", features = ["v4"] }
+chrono       = { version = "0.4", features = ["serde"] }
+tokio-stream = { version = "0.1", features = ["net"] }
+futures      = { version = "0.3" }
+dashmap      = { version = "6" }
+bytes        = { version = "1" }
+async-stream = { version = "0.3" }
+
+# Crypto
+sha2             = { version = "0.10" }
+hmac             = { version = "0.12" }
+hex              = { version = "0.4" }
+async-recursion  = { version = "1" }
+rand             = { version = "0.9" }
+minijinja        = { version = "2", features = ["loader"] }
+
+# Testing
+tempfile = { version = "3" }
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1

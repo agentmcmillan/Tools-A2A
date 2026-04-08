@@ -1,0 +1,178 @@
+# ── a2a Stack ─────────────────────────────────────────────────────────────────
+#
+# Services:
+#   gateway       — a2a-gateway (gRPC :7240, peer :7241, HTTP :7242)
+#   orchestrator  — example orchestrator agent
+#   research      — example research agent
+#   writer        — example writer agent
+#   sidecar       — Unix socket → TCP gRPC bridge for non-Rust agents
+#   jaeger        — Distributed tracing UI (OTLP :4317, UI :16686)
+#   nats          — NATS Core for fan-out notifications (:4222)
+#
+# All credentials come from environment variables — never in this file.
+# Copy .env.example → .env and fill in secrets before running.
+#
+# Usage:
+#   docker compose up -d
+#   cargo run -p a2a-cli -- health
+#   open http://localhost:16686   # Jaeger traces
+
+services:
+
+  # ── Core: Gateway ──────────────────────────────────────────────────────────
+
+  # ── Database: PostgreSQL ─────────────────────────────────────────────────────
+
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER:     a2a
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?required}
+      POSTGRES_DB:       a2a
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U a2a -d a2a"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # ── Core: Gateway ──────────────────────────────────────────────────────────
+
+  gateway:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: gateway
+    image: a2a-gateway:latest
+    restart: unless-stopped
+    ports:
+      - "7240:7240"   # LAN agent gRPC (plain)
+      - "7241:7241"   # Peer gateway gRPC (mTLS)
+      - "7242:7242"   # HTTP: A2A spec + Agent Card + /health
+      - "7243:7243"   # Web UI: dashboard, projects, contributions
+    volumes:
+      - gateway-data:/data
+      - ./gateway.toml:/app/gateway.toml:ro
+    environment:
+      A2A_CONFIG:          /app/gateway.toml
+      DATABASE_URL:          postgres://a2a:${POSTGRES_PASSWORD:?required}@postgres/a2a
+      A2A_JWT_SECRET:        ${A2A_JWT_SECRET:?required}
+      A2A_PROXMOX_TOKEN:     ${A2A_PROXMOX_TOKEN:-}
+      ENTROPY_WEBHOOK_URL:   ${ENTROPY_WEBHOOK_URL:-}
+      ENTROPY_BEARER_TOKEN:  ${ENTROPY_BEARER_TOKEN:-}
+      NATS_URL:              nats://nats:4222
+      RUST_LOG:              a2a_gateway=info,info
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4317
+    depends_on:
+      postgres:
+        condition: service_healthy
+      jaeger:
+        condition: service_started
+      nats:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:7242/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  # ── Example Agents ──────────────────────────────────────────────────────────
+
+  orchestrator:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: orchestrator
+    image: a2a-orchestrator:latest
+    restart: unless-stopped
+    ports:
+      - "8180:8080"
+    environment:
+      A2A_GATEWAY:  http://gateway:7240
+      A2A_ENDPOINT: http://orchestrator:8080
+      RUST_LOG:     orchestrator=info,info
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4317
+    depends_on:
+      - gateway
+
+  research:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: research
+    image: a2a-research:latest
+    restart: unless-stopped
+    ports:
+      - "8181:8080"
+    environment:
+      A2A_GATEWAY:  http://gateway:7240
+      A2A_ENDPOINT: http://research:8080
+      RUST_LOG:     research=info,info
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4317
+    depends_on:
+      - gateway
+
+  writer:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: writer
+    image: a2a-writer:latest
+    restart: unless-stopped
+    ports:
+      - "8182:8080"
+    environment:
+      A2A_GATEWAY:  http://gateway:7240
+      A2A_ENDPOINT: http://writer:8080
+      RUST_LOG:     writer=info,info
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4317
+    depends_on:
+      - gateway
+
+  # ── Sidecar: Unix socket → gateway bridge ───────────────────────────────────
+  # Attach a Python/JS agent container to the same sidecar-sock volume,
+  # then connect to /run/a2a/agent.sock inside the container.
+
+  sidecar:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: sidecar
+    image: a2a-sidecar:latest
+    restart: unless-stopped
+    volumes:
+      - sidecar-sock:/run/a2a
+    environment:
+      A2A_SOCKET:  /run/a2a/agent.sock
+      A2A_GATEWAY: http://gateway:7240
+      RUST_LOG:    a2a_sidecar=info,info
+    depends_on:
+      - gateway
+
+  # ── Observability: Jaeger ───────────────────────────────────────────────────
+
+  jaeger:
+    image: jaegertracing/all-in-one:1.57
+    restart: unless-stopped
+    ports:
+      - "4317:4317"   # OTLP gRPC
+      - "16686:16686" # Jaeger UI
+    environment:
+      COLLECTOR_OTLP_ENABLED: "true"
+
+  # ── Message bus: NATS Core ──────────────────────────────────────────────────
+
+  nats:
+    image: nats:2.10-alpine
+    restart: unless-stopped
+    ports:
+      - "4222:4222"   # Client connections
+      - "8222:8222"   # HTTP monitoring
+    command: ["-m", "8222"]
+
+volumes:
+  gateway-data:
+  postgres-data:
+  sidecar-sock:

@@ -1,0 +1,16 @@
+/target
+/data/
+/certs/*.pem
+/certs/*.key
+.env
+.env.local
+gateway.local.toml
+
+# Brain-wave memory (local state, not source)
+/alpha-wave/
+/beta-wave/
+/rem/
+
+# Review artifacts (generated, not source)
+SECURITY_REVIEW.md
+CODE_REVIEW.md

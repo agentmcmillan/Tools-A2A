@@ -1,0 +1,19 @@
+{% if step %}
+<div class="prompt-box"
+     hx-get="/projects/{{ project_id }}/onboard"
+     hx-trigger="every 4s[document.activeElement.tagName != 'INPUT']"
+     hx-target="this"
+     hx-swap="outerHTML">
+  <p>{{ message }}</p>
+  <form hx-post="/projects/{{ project_id }}/onboard"
+        hx-target="this"
+        hx-swap="outerHTML">
+    <input type="hidden" name="step" value="{{ step }}">
+    <div class="form-row">
+      <input type="text" name="value" placeholder="{{ default_value }}"
+             style="flex:1;min-width:250px">
+      <button type="submit" class="btn-primary">Submit</button>
+    </div>
+  </form>
+</div>
+{% endif %}

@@ -1,0 +1,20 @@
+[package]
+name    = "a2a-sidecar"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "a2a-sidecar"
+path = "src/main.rs"
+
+[dependencies]
+a2a-proto = { path = "../a2a-proto" }
+
+tokio              = { workspace = true }
+tonic              = { workspace = true }
+tokio-stream       = { workspace = true }
+futures            = { workspace = true }
+async-stream       = { workspace = true }
+tracing            = { workspace = true }
+tracing-subscriber = { workspace = true }
+anyhow             = { workspace = true }

@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+{% block title %}{{ project.name }}{% endblock %}
+
+{% block content %}
+<h1>
+  {{ project.name }}
+  {% if project.visibility == "lan-only" %}<span class="badge badge-lan">LAN</span>
+  {% elif project.visibility == "group" %}<span class="badge badge-grp">Group</span>
+  {% else %}<span class="badge badge-pub">Public</span>{% endif %}
+  {% if project.is_active %}<span class="badge badge-active">active</span>{% endif %}
+</h1>
+
+<div style="color:#94a3b8;font-size:0.85rem;margin-bottom:1.5rem">
+  <a href="{{ project.repo_url }}" target="_blank">{{ project.repo_url }}</a>
+  {% if project.peer_gateway %} · peer: {{ project.peer_gateway }}{% endif %}
+  {% if project.folder_path %} · folder: <span class="mono">{{ project.folder_path }}</span>{% endif %}
+  {% if project.file_glob %} · glob: <span class="mono">{{ project.file_glob }}</span>{% endif %}
+</div>
+
+{# Onboarding prompt — htmx polls every 5s if active #}
+{% if project.onboarding != "done" %}
+<div id="onboard-section"
+     hx-get="/projects/{{ project.id }}/onboard"
+     hx-trigger="load, every 5s"
+     hx-target="this"
+     hx-swap="outerHTML">
+  Loading onboarding prompt…
+</div>
+{% endif %}
+
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:1.5rem;margin-top:1.5rem">
+
+  {# Left: task log #}
+  <div>
+    <h2>Task log</h2>
+    <div id="task-log"
+         hx-get="/projects/{{ project.id }}/tasks"
+         hx-trigger="load, every 10s"
+         hx-target="this"
+         hx-swap="outerHTML">
+      Loading…
+    </div>
+  </div>
+
+  {# Right: agents + contributions #}
+  <div>
+    <h2>Agents</h2>
+    {% if agents %}
+    <ul style="list-style:none;font-size:0.9rem">
+      {% for a in agents %}<li style="padding:0.25rem 0;border-bottom:1px solid #1a1a1a">{{ a }}</li>{% endfor %}
+    </ul>
+    {% else %}
+    <p style="color:#666;font-size:0.85rem">No agents attached.</p>
+    {% endif %}
+
+    <h2>Contributions</h2>
+    {% if contributions %}
+    <table>
+      <thead>
+        <tr><th>Proposer</th><th>Status</th><th>Description</th></tr>
+      </thead>
+      <tbody>
+      {% for c in contributions %}
+      <tr>
+        <td>{{ c.proposer_gateway }}</td>
+        <td>
+          {% if c.status == "accepted" %}<span class="badge badge-done">accepted</span>
+          {% elif c.status == "rejected" %}<span class="badge badge-active">rejected</span>
+          {% elif c.status == "voting" %}<span class="badge badge-voting">voting</span>
+          {% else %}<span class="badge badge-open">{{ c.status }}</span>{% endif %}
+        </td>
+        <td><a href="/projects/{{ project.id }}/contributions/{{ c.id }}">{{ c.description }}</a></td>
+      </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <p style="color:#666;font-size:0.85rem">No contributions yet.</p>
+    {% endif %}
+  </div>
+
+</div>
+{% endblock %}

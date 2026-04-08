@@ -1,0 +1,25 @@
+{# Replaces itself every 10s, advancing the cursor #}
+<div id="task-log"
+     hx-get="?after={{ next_cursor }}"
+     hx-trigger="every 10s"
+     hx-target="this"
+     hx-swap="outerHTML">
+{% if entries %}
+{% for e in entries %}
+<div class="card entry-{{ e.entry_type }}" style="padding:0.75rem;margin-bottom:0.5rem">
+  <div style="display:flex;justify-content:space-between;margin-bottom:0.25rem">
+    <span style="font-weight:600;font-size:0.85rem">{{ e.gateway_name }}
+      {% if e.agent_name %}<span style="color:#94a3b8">/{{ e.agent_name }}</span>{% endif %}
+    </span>
+    <span class="badge {% if e.entry_type == 'focus' %}badge-lan{% elif e.entry_type == 'done' %}badge-done{% elif e.entry_type == 'blocked' %}badge-active{% else %}badge-open{% endif %}">
+      {{ e.entry_type }}
+    </span>
+  </div>
+  <p style="font-size:0.9rem">{{ e.content }}</p>
+  <span class="mono" style="color:#555;font-size:0.75rem">#{{ e.cursor }}</span>
+</div>
+{% endfor %}
+{% else %}
+<p style="color:#666;font-size:0.85rem">No log entries yet.</p>
+{% endif %}
+</div>

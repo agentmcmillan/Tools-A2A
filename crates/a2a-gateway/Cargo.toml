@@ -1,0 +1,63 @@
+[package]
+name    = "a2a-gateway"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "a2a_gateway"
+path = "src/lib.rs"
+
+[[bin]]
+name = "a2a-gateway"
+path = "src/main.rs"
+
+[dependencies]
+a2a-proto = { path = "../a2a-proto" }
+
+tokio        = { workspace = true }
+tonic        = { workspace = true, features = ["tls"] }
+axum         = { workspace = true }
+tower        = { workspace = true }
+tower-http   = { workspace = true }
+reqwest      = { workspace = true }
+
+rustls        = { workspace = true }
+tokio-rustls  = { workspace = true }
+rustls-pemfile = { workspace = true }
+rcgen          = { workspace = true }
+
+jsonwebtoken = { workspace = true }
+serde        = { workspace = true }
+serde_json   = { workspace = true }
+toml         = { workspace = true }
+sqlx         = { workspace = true }
+
+tracing              = { workspace = true }
+tracing-subscriber   = { workspace = true }
+tracing-opentelemetry = { workspace = true }
+opentelemetry         = { workspace = true }
+opentelemetry_sdk     = { workspace = true }
+opentelemetry-otlp    = { workspace = true }
+
+async-nats = { workspace = true }
+casbin     = { workspace = true }
+thiserror  = { workspace = true }
+anyhow     = { workspace = true }
+uuid       = { workspace = true }
+chrono     = { workspace = true }
+dashmap    = { workspace = true }
+bytes      = { workspace = true }
+futures    = { workspace = true }
+tokio-stream = { workspace = true }
+
+sha2            = { workspace = true }
+hmac            = { workspace = true }
+hex             = { workspace = true }
+async-recursion = { workspace = true }
+rand            = { workspace = true }
+minijinja       = { workspace = true }
+
+[dev-dependencies]
+a2a-sdk      = { path = "../a2a-sdk" }
+tokio-stream = { workspace = true }
+tempfile     = { workspace = true }

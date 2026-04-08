@@ -1,0 +1,46 @@
+[gateway]
+name       = "site-a"
+port_local = 7240   # plain gRPC  — LAN agents
+port_peer  = 7241   # mTLS gRPC  — peer gateways
+port_http  = 7242   # HTTP        — A2A spec, Agent Card, /health
+port_web   = 7243   # Web UI      — dashboard, projects, contributions
+data_dir   = "/data" # matches Docker volume mount; override for local dev
+reconcile_interval_secs = 30
+
+[db]
+# Override with DATABASE_URL env var (takes precedence).
+# Format: postgres://user:password@host/dbname
+url = "postgres://a2a:a2a@postgres/a2a"
+
+[lxc]
+proxmox_url    = "https://192.168.4.100:8006"
+# api_token set via env: A2A_PROXMOX_TOKEN
+node           = "proxmox"
+agent_template = 9001
+network_bridge = "vmbr0"
+
+[[agents]]
+name     = "orchestrator"
+endpoint = "http://orchestrator:8080"
+
+[[agents]]
+name     = "research"
+endpoint = "http://research:8080"
+
+[[agents]]
+name     = "writer"
+endpoint = "http://writer:8080"
+
+[call_graph]
+orchestrator = ["research", "writer", "reviewer"]
+research     = ["writer", "fact-checker"]
+writer       = ["reviewer"]
+reviewer     = ["research"]
+
+[call_graph.limits]
+max_hops = 3
+
+# [[peers]]
+# name      = "site-b"
+# endpoint  = "https://agents.site-b.example"
+# cert_path = "./certs/site-b.pem"

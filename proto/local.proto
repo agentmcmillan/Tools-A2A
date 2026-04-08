@@ -1,0 +1,140 @@
+syntax = "proto3";
+package local;
+
+// ─── Service ────────────────────────────────────────────────────────────────
+
+// LocalGateway is the service exposed on :7240 (plain gRPC, LAN only).
+// All agents on the local network connect here.  No TLS, no auth —
+// the LAN is the trust boundary.  Zero-trust only kicks in at gateway↔gateway.
+service LocalGateway {
+    // Lifecycle
+    rpc Register  (AgentManifest) returns (RegisterAck);
+    rpc Heartbeat (AgentRef)      returns (Ack);
+
+    // Task calls
+    rpc Call      (CallRequest)   returns (CallResponse);
+    rpc Stream    (CallRequest)   returns (stream StreamChunk);
+
+    // Discovery
+    rpc ListAgents (Empty)        returns (AgentList);
+    rpc Health     (Empty)        returns (HealthStatus);
+
+    // Agent identity (soul / memory / todos)
+    rpc GetSoul      (AgentRef)     returns (SoulContent);
+    rpc UpdateMemory (MemoryPatch)  returns (Ack);
+    rpc AppendTodo   (TodoEntry)    returns (Ack);
+    rpc ListTodos    (TodoFilter)   returns (TodoList);
+    rpc CompleteTodo (TodoComplete) returns (Ack);
+}
+
+// ─── Registration ────────────────────────────────────────────────────────────
+
+message AgentManifest {
+    string          name         = 1;
+    string          version      = 2;
+    string          endpoint     = 3; // how gateway routes calls back to agent
+    repeated string capabilities = 4; // capability tags e.g. "research", "write"
+    string          soul_toml    = 5; // initial soul content (may be empty)
+}
+
+message RegisterAck {
+    string agent_id  = 1; // stable ID assigned by gateway (== name for now)
+    string gateway   = 2; // gateway name echoed back
+}
+
+// ─── Call ────────────────────────────────────────────────────────────────────
+
+message CallRequest {
+    string target_agent = 1;
+    string method       = 2;
+    bytes  payload      = 3; // JSON-encoded body
+    string trace_id     = 4; // propagated for OTel
+    string caller       = 5; // name of the calling agent
+
+    // hop_count is ALWAYS set/incremented by the gateway.
+    // Values supplied by callers are ignored.
+    uint32 hop_count    = 6;
+}
+
+message CallResponse {
+    bytes  result   = 1; // JSON-encoded result
+    string error    = 2; // non-empty on failure
+    string trace_id = 3;
+}
+
+message StreamChunk {
+    bytes  data     = 1;
+    bool   done     = 2;
+    string trace_id = 3;
+}
+
+// ─── Discovery ───────────────────────────────────────────────────────────────
+
+message AgentList {
+    repeated AgentInfo agents = 1;
+}
+
+message AgentInfo {
+    string          name         = 1;
+    string          version      = 2;
+    string          endpoint     = 3;
+    repeated string capabilities = 4;
+    string          last_seen    = 5; // RFC3339
+    bool            healthy      = 6;
+}
+
+message HealthStatus {
+    bool   ok            = 1;
+    int32  agent_count   = 2;
+    int32  peer_count    = 3;
+    bool   nats_ok       = 4;
+    string reconciler_last_run = 5; // RFC3339
+}
+
+// ─── Identity ────────────────────────────────────────────────────────────────
+
+message AgentRef {
+    string name = 1;
+}
+
+message SoulContent {
+    string content_toml = 1;
+}
+
+message MemoryPatch {
+    string agent_name = 1;
+    string append_md  = 2; // appended (never overwrites)
+}
+
+message TodoEntry {
+    string agent_name = 1;
+    string task       = 2;
+}
+
+message TodoFilter {
+    string agent_name    = 1;
+    bool   include_done  = 2;
+}
+
+message TodoList {
+    repeated Todo todos = 1;
+}
+
+message Todo {
+    int64  id           = 1;
+    string task         = 2;
+    string status       = 3; // "pending" | "in_progress" | "done"
+    string notes        = 4; // annotation (never deleted)
+    string created_at   = 5; // RFC3339
+    string completed_at = 6; // RFC3339, empty if not done
+}
+
+message TodoComplete {
+    int64  id    = 1;
+    string notes = 2; // completion annotation
+}
+
+// ─── Shared ──────────────────────────────────────────────────────────────────
+
+message Empty  {}
+message Ack    { bool ok = 1; }

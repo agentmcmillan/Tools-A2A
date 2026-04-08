@@ -1,0 +1,22 @@
+[package]
+name    = "a2a-cli"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "a2a"
+path = "src/main.rs"
+
+[dependencies]
+a2a-sdk   = { path = "../a2a-sdk" }
+a2a-proto = { path = "../a2a-proto" }
+
+tokio      = { workspace = true }
+tonic      = { workspace = true }
+clap       = { version = "4", features = ["derive", "env"] }
+serde_json = { workspace = true }
+anyhow     = { workspace = true }
+uuid       = { workspace = true }
+reqwest    = { workspace = true }
+tracing    = { workspace = true }
+tracing-subscriber = { workspace = true }

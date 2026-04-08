@@ -1,0 +1,35 @@
+# Developer-local gateway configuration.
+# Used with dev-compose.yml for the distributed topology.
+#
+# Each developer runs their own gateway. The NAS (site-hub) is the shared peer.
+# Agents register locally via :7240. File sync scans local folders.
+
+[gateway]
+name       = "dev-local"      # override per developer (set A2A_GATEWAY_NAME env if you want)
+port_local = 7240
+port_peer  = 7241
+port_http  = 7242
+port_web   = 7243
+data_dir   = "/data"
+reconcile_interval_secs = 30
+
+[db]
+url = "postgres://a2a:a2a@postgres/a2a"
+
+# No seed agents — developers run agents as bare processes:
+#   cargo run -p orchestrator
+#   cargo run -p research
+
+[call_graph]
+orchestrator = ["research", "writer", "reviewer"]
+research     = ["writer", "fact-checker"]
+writer       = ["reviewer"]
+reviewer     = ["research"]
+
+[call_graph.limits]
+max_hops = 3
+
+# Peer with the NAS hub. Uncomment and set your NAS IP:
+# [[peers]]
+# name     = "hub"
+# endpoint = "http://192.168.1.67:7241"

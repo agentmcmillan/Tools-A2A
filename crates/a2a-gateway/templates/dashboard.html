@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+{% block title %}Dashboard{% endblock %}
+
+{% block content %}
+<h1>Projects</h1>
+
+{% if pending_prompts %}
+<div id="onboarding-alerts">
+  <h2>Onboarding in progress</h2>
+  {% for p in pending_prompts %}
+  <div class="prompt-box"
+       hx-get="/projects/{{ p.project_id }}/onboard"
+       hx-trigger="every 5s"
+       hx-target="this"
+       hx-swap="outerHTML">
+    <strong>{{ p.project_name }}</strong> — {{ p.step }}<br>
+    <em>{{ p.message }}</em>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+<table>
+  <thead>
+    <tr>
+      <th>Name</th>
+      <th>Visibility</th>
+      <th>Agents</th>
+      <th>Log entries</th>
+      <th>Status</th>
+      <th>Repo</th>
+    </tr>
+  </thead>
+  <tbody>
+  {% for p in projects %}
+  <tr>
+    <td><a href="/projects/{{ p.id }}">{{ p.name }}</a></td>
+    <td>
+      {% if p.visibility == "lan-only" %}<span class="badge badge-lan">LAN</span>
+      {% elif p.visibility == "group" %}<span class="badge badge-grp">Group</span>
+      {% else %}<span class="badge badge-pub">Public</span>{% endif %}
+    </td>
+    <td>{{ p.agent_count }}</td>
+    <td class="mono">{{ p.log_entries }}</td>
+    <td>
+      {% if p.onboarding != "done" %}
+        <span class="badge badge-open">onboarding: {{ p.onboarding }}</span>
+      {% elif p.is_active %}
+        <span class="badge badge-active">active</span>
+      {% else %}
+        <span class="badge badge-done">idle</span>
+      {% endif %}
+    </td>
+    <td><a href="{{ p.repo_url }}" target="_blank" class="mono">{{ p.repo_url }}</a></td>
+  </tr>
+  {% else %}
+  <tr><td colspan="6" style="text-align:center;color:#666;padding:2rem">No projects yet.</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endblock %}

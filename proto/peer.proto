@@ -1,0 +1,179 @@
+syntax = "proto3";
+package peer;
+
+// ─── Service ────────────────────────────────────────────────────────────────
+
+// PeerGateway is exposed on :7241 (mTLS gRPC).
+// Only other a2a-gateway instances connect here.
+// Trust is established via mutual TLS + short-lived JWT.
+service PeerGateway {
+    // Identity handshake — exchange capabilities and public keys
+    rpc Handshake (PeerHandshake)   returns (PeerHandshake);
+
+    // Agent delegation — forward a task to an agent behind the remote gateway
+    rpc Delegate  (DelegateRequest) returns (DelegateResponse);
+
+    // Health ping
+    rpc Ping      (PeerPing)        returns (PeerStatus);
+
+    // ── Project sync (Phase 2) ────────────────────────────────────────────────
+
+    // Announce a snapshot to a peer (PUSH notification, no payload)
+    rpc AnnounceSnapshot (SnapshotAnnouncement) returns (AckResponse);
+
+    // Fetch the transcript + required object list for a given snapshot
+    rpc FetchSnapshot (FetchSnapshotRequest) returns (FetchSnapshotResponse);
+
+    // Fetch the raw bytes of a single content-addressed object
+    rpc FetchObject (FetchObjectRequest) returns (FetchObjectResponse);
+
+    // List projects visible to this peer (group or public visibility)
+    rpc ListProjects (ListProjectsRequest) returns (ListProjectsResponse);
+
+    // Sync task log delta — returns entries after a given cursor
+    rpc SyncTaskLog (TaskLogSyncRequest) returns (TaskLogSyncResponse);
+
+    // Group membership: consume a one-time invite token
+    rpc JoinGroup (JoinGroupRequest) returns (JoinGroupResponse);
+}
+
+// ─── Handshake ───────────────────────────────────────────────────────────────
+
+message PeerHandshake {
+    string gateway_name = 1;
+    string version      = 2;
+    string public_key   = 3; // PEM-encoded public key for JWT verification
+    string agent_card   = 4; // JSON-serialised A2A AgentCard
+}
+
+// ─── Delegation ──────────────────────────────────────────────────────────────
+
+message DelegateRequest {
+    string  target_agent = 1;
+    string  method       = 2;
+    bytes   payload      = 3; // JSON
+    string  trace_id     = 4;
+    string  jwt          = 5; // signed by calling gateway, validated by peer
+    uint32  hop_count    = 6; // incremented by each gateway hop
+}
+
+message DelegateResponse {
+    bytes  result   = 1;
+    string error    = 2;
+    string trace_id = 3;
+}
+
+// ─── Health ──────────────────────────────────────────────────────────────────
+
+message PeerPing {
+    string gateway_name = 1;
+}
+
+message PeerStatus {
+    bool   ok           = 1;
+    string gateway_name = 2;
+    int32  agent_count  = 3;
+    string version      = 4;
+}
+
+// ─── Project sync ─────────────────────────────────────────────────────────────
+
+// Pushed by the snapshot owner when its HEAD advances.
+// Recipients call FetchSnapshot if they want to pull the changes.
+message SnapshotAnnouncement {
+    string project_id    = 1;
+    string project_name  = 2;
+    string snapshot_id   = 3;
+    string gateway_name  = 4;
+    string jwt           = 5; // auth token
+}
+
+message AckResponse {
+    bool   ok    = 1;
+    string error = 2;
+}
+
+message FetchSnapshotRequest {
+    string project_id   = 1;
+    string snapshot_id  = 2;
+    string jwt          = 3;
+}
+
+message FetchSnapshotResponse {
+    string snapshot_id  = 1;
+    string transcript   = 2;    // full transcript text
+    repeated string missing_objects = 3; // sha256 hashes the caller needs to fetch
+    string error        = 4;
+}
+
+message FetchObjectRequest {
+    string sha256 = 1;
+    string jwt    = 2;
+}
+
+message FetchObjectResponse {
+    string sha256 = 1;
+    bytes  data   = 2;
+    string error  = 3;
+}
+
+// ─── Project listing ──────────────────────────────────────────────────────────
+
+message ListProjectsRequest {
+    string jwt           = 1;
+    string group_id      = 2; // optional: filter to a specific group
+}
+
+message RemoteProject {
+    string project_id    = 1;
+    string project_name  = 2;
+    string repo_url      = 3;
+    string description   = 4;
+    string visibility    = 5; // 'group' | 'public'
+    string snapshot_id   = 6; // current HEAD
+    string gateway_name  = 7;
+}
+
+message ListProjectsResponse {
+    repeated RemoteProject projects = 1;
+    string error = 2;
+}
+
+// ─── Task log sync ───────────────────────────────────────────────────────────
+
+message TaskLogSyncRequest {
+    string project_id    = 1;
+    int64  after_cursor  = 2;
+    string jwt           = 3;
+}
+
+message TaskLogEntry {
+    string id            = 1;
+    string gateway_name  = 2;
+    string agent_name    = 3;
+    string entry_type    = 4; // 'focus' | 'done' | 'blocked' | 'note'
+    string content       = 5;
+    int64  cursor        = 6;
+    double created_at    = 7;
+    string signature     = 8;
+}
+
+message TaskLogSyncResponse {
+    repeated TaskLogEntry entries = 1;
+    int64  head_cursor            = 2;
+    string error                  = 3;
+}
+
+// ─── Group membership ─────────────────────────────────────────────────────────
+
+message JoinGroupRequest {
+    string invite_token  = 1;
+    string gateway_name  = 2; // joining gateway
+    string jwt           = 3;
+}
+
+message JoinGroupResponse {
+    string group_id   = 1;
+    string group_name = 2;
+    string error      = 3;
+}

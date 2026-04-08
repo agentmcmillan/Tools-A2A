@@ -1,0 +1,25 @@
+[package]
+name    = "a2a-sdk"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+a2a-proto    = { path = "../a2a-proto" }
+
+tokio        = { workspace = true }
+tonic        = { workspace = true }
+serde        = { workspace = true }
+serde_json   = { workspace = true }
+tracing      = { workspace = true }
+thiserror    = { workspace = true }
+anyhow       = { workspace = true }
+uuid         = { workspace = true }
+chrono       = { workspace = true }
+tokio-stream = { workspace = true }
+futures      = { workspace = true }
+bytes        = { workspace = true }
+async-stream = { workspace = true }
+async-nats   = { workspace = true }
+
+[dev-dependencies]
+a2a-gateway  = { path = "../a2a-gateway" }
