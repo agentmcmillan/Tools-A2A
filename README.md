@@ -30,6 +30,303 @@ A zero-trust, federated gateway that lets AI agents discover each other, delegat
 
 ---
 
+## System Overview
+
+```mermaid
+graph TB
+    subgraph "Developer Machine"
+        CLI["a2a CLI"]
+        SDK["a2a-sdk<br/>(Rust library)"]
+        A1["orchestrator<br/>agent"]
+        A2["research<br/>agent"]
+        A3["writer<br/>agent"]
+        SC["a2a-sidecar<br/>(Unix socket)"]
+        PY["Python/JS<br/>agent"]
+    end
+
+    subgraph "Gateway Process"
+        GW["a2a-gateway"]
+        REG["Registry<br/>(DashMap + PG)"]
+        RTR["Router<br/>(call graph DAG)"]
+        REC["Reconciler<br/>(30s loop)"]
+        FS["File Sync<br/>(SHA256 objects)"]
+        TL["Task Log<br/>(HMAC signed)"]
+        GRP["Groups<br/>(invite tokens)"]
+        HOOKS["NATS Publisher<br/>(hook events)"]
+    end
+
+    subgraph "Infrastructure"
+        PG[("PostgreSQL 16")]
+        NATS["NATS Core"]
+        OBJ["Object Store<br/>(disk)"]
+    end
+
+    subgraph "External"
+        PEER["Peer Gateway<br/>(remote site)"]
+        CF["Cloudflare<br/>Tunnel"]
+        EXT["Third-party<br/>A2A agents"]
+    end
+
+    A1 & A2 & A3 -->|"gRPC :7240<br/>(plain, LAN)"| GW
+    PY -->|"Unix socket"| SC -->|"gRPC :7240"| GW
+    CLI -->|"gRPC + HTTP"| GW
+
+    GW --> REG & RTR & REC & FS & TL & GRP & HOOKS
+    REG & TL & GRP & FS --> PG
+    FS --> OBJ
+    HOOKS --> NATS
+    NATS -.->|"hook events"| SDK
+    SDK --> A1 & A2 & A3
+
+    GW <-->|"mTLS gRPC :7241<br/>JWT auth"| PEER
+    GW -->|":7242 HTTPS"| CF
+    EXT -->|"A2A JSON-RPC"| CF
+
+    style GW fill:#e74c3c,color:#fff
+    style PG fill:#336791,color:#fff
+    style NATS fill:#27ae60,color:#fff
+    style PEER fill:#8e44ad,color:#fff
+```
+
+## Zero-Trust Security Model
+
+```mermaid
+graph LR
+    subgraph "Trust Zone 1: LAN (implicit trust)"
+        AGENT["LAN Agent<br/>:7240 plain gRPC"]
+        WEB["Web Dashboard<br/>:7243 HTTP"]
+    end
+
+    subgraph "Trust Zone 2: Peer Boundary (zero trust)"
+        PEER["Peer Gateway<br/>:7241 mTLS gRPC"]
+        JWT["JWT Validation<br/>HS256 · 1hr TTL"]
+        CERT["mTLS Cert<br/>Verification"]
+    end
+
+    subgraph "Trust Zone 3: Public Internet (untrusted)"
+        EXT["External A2A<br/>:7242 HTTPS"]
+        CFTUN["Cloudflare<br/>Tunnel + Access"]
+        BEARER["Bearer Token<br/>Auth"]
+    end
+
+    subgraph "Gateway Enforcement"
+        CG["Call Graph<br/>DAG Check"]
+        HOP["Hop Limit<br/>(max 3)"]
+        SSRF["SSRF Block<br/>(endpoint validation)"]
+        HMAC["HMAC-SHA256<br/>Task Log Signing"]
+        INVITE["Invite Tokens<br/>32B random · 48h · single-use"]
+        HASH["Hash Validation<br/>(hex-only, no traversal)"]
+    end
+
+    AGENT -->|"no auth needed"| CG --> HOP
+    PEER --> CERT --> JWT --> CG
+    EXT --> CFTUN --> BEARER --> CG
+    CG --> SSRF
+    CG --> HMAC
+    CG --> INVITE
+    CG --> HASH
+
+    style AGENT fill:#27ae60,color:#fff
+    style PEER fill:#f39c12,color:#fff
+    style EXT fill:#e74c3c,color:#fff
+    style CG fill:#2c3e50,color:#fff
+```
+
+## Agent Lifecycle & Data Flow
+
+```mermaid
+sequenceDiagram
+    participant Agent
+    participant Gateway
+    participant PostgreSQL
+    participant NATS
+    participant Peer
+
+    Note over Agent,Gateway: Registration
+    Agent->>Gateway: Register(name, endpoint, soul, capabilities)
+    Gateway->>PostgreSQL: INSERT agents + memories
+    Gateway-->>Agent: RegisterAck(gateway_name)
+
+    Note over Agent,Gateway: Calling Another Agent
+    Agent->>Gateway: Call(target="writer", payload)
+    Gateway->>Gateway: Router: check call graph + hop limit
+    Gateway->>PostgreSQL: Log to task_log (HMAC signed)
+    Gateway->>Agent: Forward call to writer endpoint
+    Agent-->>Gateway: Response
+
+    Note over Gateway,NATS: Reconciler (every 30s)
+    Gateway->>PostgreSQL: Load open todos + capabilities
+    Gateway->>PostgreSQL: Assign tasks, merge duplicates
+    Gateway->>NATS: publish(a2a.agent.{name}.task_assigned)
+    NATS-->>Agent: Hook callback fires
+
+    Note over Gateway,Peer: Peer Sync (every 60s)
+    Gateway->>Peer: GetHead(project_id)
+    Peer-->>Gateway: snapshot_id
+    Gateway->>Gateway: Compute diff
+    Gateway->>Peer: FetchObject(missing hashes)
+    Gateway->>PostgreSQL: apply_peer_snapshot()
+```
+
+## Roadmap
+
+```mermaid
+gantt
+    title Tools-A2A Roadmap
+    dateFormat YYYY-MM-DD
+    axisFormat %b %d
+
+    section Completed
+    Phase 1 — Foundation          :done, p1, 2026-03-24, 7d
+    Phase 2 — Peer Sync           :done, p2, 2026-03-31, 7d
+    Phase 3 — LXC + Sidecar       :done, p3, 2026-04-07, 2d
+    PostgreSQL Migration           :done, pg, 2026-04-07, 1d
+    Agent Hooks (NATS)             :done, hooks, 2026-04-08, 1d
+    Security Audit (5 models)      :done, audit, 2026-04-08, 1d
+    Developer Install Flow         :done, inst, 2026-04-08, 1d
+
+    section In Progress
+    Task State Machine (10 states) :active, t4, 2026-04-08, 3d
+    Error Classification           :active, t5, 2026-04-08, 2d
+
+    section Next Up
+    Web Dashboard Auth (TODO-11)     :t11, 2026-04-11, 3d
+    Cloudflare Tunnel (TODO-8)       :t8, 2026-04-11, 2d
+    LAN Peer Mode (TODO-10)          :t10, 2026-04-14, 2d
+    Web Dashboard UI (TODO-1)        :t1, 2026-04-14, 5d
+    LLM PRD Generation (TODO-2)      :t2, 2026-04-19, 3d
+    Verbatim Memory Store (TODO-7)   :t7, 2026-04-19, 3d
+    Rate Limiting + CORS             :sec, 2026-04-22, 2d
+    NATS Authentication              :nats, 2026-04-22, 1d
+```
+
+## Quick Install
+
+```bash
+# Clone
+git clone https://github.com/agentmcmillan/Tools-A2A.git && cd Tools-A2A
+
+# One-command setup (generates secrets, starts gateway + postgres)
+./install.sh
+
+# Or manually with Docker:
+cp .env.example .env       # Edit: set POSTGRES_PASSWORD, A2A_JWT_SECRET
+docker compose -f dev-compose.yml up -d
+
+# Verify
+curl -s http://localhost:7242/health | jq .
+
+# Install CLI
+cargo install --path crates/a2a-cli
+
+# Run an agent
+cargo run -p orchestrator
+
+# Peer with a hub gateway
+a2a peers add --name hub --endpoint http://your-nas:7241
+```
+
+## Example: Connecting a 3-Person Team
+
+A practical walkthrough of setting up A2A for a team of three — Alice (NAS admin), Bob (local dev), and Carol (remote).
+
+```mermaid
+graph TB
+    subgraph "Alice's NAS (always-on hub)"
+        A_GW["a2a-gateway<br/>'alice-nas'<br/>:7240-7243"]
+        A_PG[("PostgreSQL")]
+        A_NATS["NATS :4222"]
+        A_JAEGER["Jaeger :16686"]
+        A_CI["CI agent<br/>(background builds)"]
+    end
+
+    subgraph "Bob's Laptop (LAN)"
+        B_GW["a2a-gateway<br/>'bob-macbook'"]
+        B_PG[("PostgreSQL")]
+        B_ORCH["orchestrator"]
+        B_RES["research"]
+    end
+
+    subgraph "Carol (Remote)"
+        C_GW["a2a-gateway<br/>'carol-desktop'"]
+        C_PG[("PostgreSQL")]
+        C_WRITE["writer"]
+    end
+
+    B_GW <-->|"peer gRPC :7241<br/>(LAN, plain)"| A_GW
+    C_GW <-->|"peer gRPC :7241<br/>(Cloudflare Tunnel, mTLS)"| A_GW
+    B_ORCH & B_RES -->|":7240"| B_GW
+    A_CI -->|":7240"| A_GW
+    C_WRITE -->|":7240"| C_GW
+    A_GW --> A_PG & A_NATS & A_JAEGER
+    B_GW --> B_PG
+    C_GW --> C_PG
+    B_GW -.->|"NATS events"| A_NATS
+    C_GW -.->|"NATS events"| A_NATS
+
+    style A_GW fill:#e74c3c,color:#fff
+    style B_GW fill:#3498db,color:#fff
+    style C_GW fill:#9b59b6,color:#fff
+```
+
+**Step 1 — Alice sets up the hub (NAS)**
+```bash
+# On the NAS
+git clone https://github.com/agentmcmillan/Tools-A2A.git && cd Tools-A2A
+cp .env.example .env   # set POSTGRES_PASSWORD, A2A_JWT_SECRET
+docker compose up -d   # full stack: gateway + postgres + NATS + Jaeger
+```
+
+**Step 2 — Alice creates a group and project**
+```bash
+a2a groups create my-team --description "Our dev team"
+a2a groups invite my-team
+# Output: invite token  a3f9c2...  (valid 48 hours, single use)
+
+a2a projects add my-app --repo https://github.com/team/my-app
+```
+
+**Step 3 — Bob joins from his laptop (same LAN)**
+```bash
+# On Bob's laptop
+./install.sh                          # starts local gateway + postgres
+a2a peers add --name hub --endpoint http://192.168.1.67:7241
+a2a groups join http://192.168.1.67:7241 a3f9c2...   # uses Alice's token
+
+# Bob creates a project pointing at his local checkout
+a2a projects add my-app --repo https://github.com/team/my-app
+# Set the folder to sync
+a2a projects set-folder my-app ~/code/my-app
+
+# Run agents locally (fast iteration, no network latency)
+cargo run -p orchestrator &
+cargo run -p research &
+```
+
+**Step 4 — Carol joins remotely (via Cloudflare Tunnel)**
+```bash
+# Alice generates a second invite (first was consumed by Bob)
+a2a groups invite my-team
+# Output: new token  7b2e01...
+
+# Carol (on a different network) installs and peers via tunnel
+./install.sh
+a2a peers add --name hub --endpoint https://agents.cubic.build:7241
+a2a groups join https://agents.cubic.build:7241 7b2e01...
+
+# Carol runs the writer agent locally
+cargo run -p writer
+```
+
+**What happens now:**
+- Bob's orchestrator assigns a research task -> NATS notifies Bob's research agent
+- Research agent completes work -> delegates to Carol's writer via peer gateway
+- File sync runs every 60s: Bob's local changes -> Alice's NAS -> Carol's machine
+- Task log entries are HMAC-signed and replicated across all three gateways
+- Alice can see everything on the Jaeger dashboard at `:16686`
+
+---
+
 ## What It Does
 
 | Feature | How It Works |
