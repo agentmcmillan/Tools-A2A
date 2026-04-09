@@ -133,41 +133,29 @@ impl LocalGateway for LocalGatewayHandler {
             "routing call"
         );
 
-        // Forward to agent's endpoint via HTTP POST
-        let url = format!("{}/a2a/call", decision.endpoint.trim_end_matches('/'));
-        let body = serde_json::json!({
-            "method":    r.method,
-            "payload":   r.payload,
-            "trace_id":  trace_id,
-            "caller":    r.caller,
-            "hop_count": decision.hop_count,
-        });
-
-        let resp = self.http
-            .post(&url)
-            .json(&body)
-            .timeout(std::time::Duration::from_secs(30))
-            .send()
+        // Forward to agent's endpoint via gRPC (agents serve LocalGateway proto)
+        let channel = tonic::transport::Channel::from_shared(decision.endpoint.clone())
+            .map_err(|e| Status::internal(format!("invalid agent endpoint: {e}")))?
+            .connect_timeout(std::time::Duration::from_secs(5))
+            .connect()
             .await
             .map_err(|e| Status::unavailable(format!("agent unreachable: {e}")))?;
 
-        let status = resp.status();
-        let bytes = resp.bytes().await
-            .map_err(|e| Status::internal(format!("reading response: {e}")))?;
+        let mut agent_client = a2a_proto::local::local_gateway_client::LocalGatewayClient::new(channel);
 
-        if !status.is_success() {
-            return Ok(Response::new(CallResponse {
-                result:   vec![],
-                error:    format!("agent returned HTTP {status}"),
-                trace_id,
-            }));
-        }
+        let forward_req = CallRequest {
+            target_agent: r.target_agent.clone(),
+            method:       r.method,
+            payload:      r.payload,
+            trace_id:     trace_id.clone(),
+            caller:       r.caller,
+            hop_count:    decision.hop_count,
+        };
 
-        Ok(Response::new(CallResponse {
-            result:   bytes.to_vec(),
-            error:    String::new(),
-            trace_id,
-        }))
+        let resp = agent_client.call(forward_req).await
+            .map_err(|e| Status::unavailable(format!("agent call failed: {e}")))?;
+
+        Ok(resp)
     }
 
     type StreamStream = ReceiverStream<Result<StreamChunk, Status>>;
@@ -328,10 +316,13 @@ fn validate_endpoint(endpoint: &str) -> Result<(), Status> {
     let after_scheme = endpoint.split("://").nth(1).unwrap_or("");
     let host = after_scheme.split(&['/', ':'][..]).next().unwrap_or("");
 
-    // Block dangerous hosts
+    // Block cloud metadata services (SSRF targets).
+    // Note: localhost/127.0.0.1/0.0.0.0 are intentionally ALLOWED here because
+    // LAN agents legitimately register with bind addresses like http://0.0.0.0:8080.
+    // The SSRF risk is in the call-forwarding path, not registration.
     let blocked = [
         "169.254.169.254", "metadata.google.internal",
-        "metadata.internal", "localhost", "127.0.0.1", "::1", "0.0.0.0",
+        "metadata.internal",
     ];
     if blocked.iter().any(|b| host.eq_ignore_ascii_case(b)) {
         return Err(Status::invalid_argument("endpoint host is not allowed (blocked for SSRF prevention)"));

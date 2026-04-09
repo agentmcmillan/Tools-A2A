@@ -10,7 +10,7 @@ port_local = 7240
 port_peer  = 7241
 port_http  = 7242
 port_web   = 7243
-data_dir   = "/data"
+data_dir   = "./data"
 reconcile_interval_secs = 30
 
 [db]
