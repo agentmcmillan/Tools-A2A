@@ -183,23 +183,29 @@ gantt
     Phase 2 — Peer Sync           :done, p2, 2026-03-31, 7d
     Phase 3 — LXC + Sidecar       :done, p3, 2026-04-07, 2d
     PostgreSQL Migration           :done, pg, 2026-04-07, 1d
-    Agent Hooks (NATS)             :done, hooks, 2026-04-08, 1d
-    Security Audit (5 models)      :done, audit, 2026-04-08, 1d
+    Agent Hooks (NATS/Pulsar)      :done, hooks, 2026-04-08, 1d
+    Security Audit (8 reviewers)   :done, audit, 2026-04-08, 1d
     Developer Install Flow         :done, inst, 2026-04-08, 1d
+    Task State Machine (10 states) :done, t4, 2026-04-08, 1d
+    Error Classification           :done, t5, 2026-04-08, 1d
+    Web Dashboard Auth             :done, t11, 2026-04-08, 1d
+    Cloudflare Tunnel              :done, t8, 2026-04-08, 1d
+    LAN Peer Mode                  :done, t10, 2026-04-08, 1d
+    LLM PRD Generation             :done, t2, 2026-04-08, 1d
+    Verbatim Memory Store          :done, t7, 2026-04-08, 1d
+    CORS + Security Headers        :done, sec, 2026-04-08, 1d
+    NATS Authentication            :done, nats, 2026-04-08, 1d
+    Apache Pulsar Event Bus        :done, pul, 2026-04-09, 1d
+    gRPC Call Forwarding Fix       :done, grpc, 2026-04-09, 1d
+    CI/CD (GitHub Actions)         :done, ci, 2026-04-09, 1d
+    Army Review (8 reviewers)      :done, army, 2026-04-09, 1d
 
-    section In Progress
-    Task State Machine (10 states) :active, t4, 2026-04-08, 3d
-    Error Classification           :active, t5, 2026-04-08, 2d
-
-    section Next Up
-    Web Dashboard Auth (TODO-11)     :t11, 2026-04-11, 3d
-    Cloudflare Tunnel (TODO-8)       :t8, 2026-04-11, 2d
-    LAN Peer Mode (TODO-10)          :t10, 2026-04-14, 2d
-    Web Dashboard UI (TODO-1)        :t1, 2026-04-14, 5d
-    LLM PRD Generation (TODO-2)      :t2, 2026-04-19, 3d
-    Verbatim Memory Store (TODO-7)   :t7, 2026-04-19, 3d
-    Rate Limiting + CORS             :sec, 2026-04-22, 2d
-    NATS Authentication              :nats, 2026-04-22, 1d
+    section Future
+    Web Dashboard UI polish (TODO-1) :t1, 2026-04-14, 5d
+    Asymmetric JWT (per-peer keys)   :jwt, 2026-04-14, 3d
+    Rate Limiting middleware         :rl, 2026-04-17, 2d
+    mTLS on peer channel             :mtls, 2026-04-19, 3d
+    OTEL tracing initialization      :otel, 2026-04-19, 2d
 ```
 
 ## Quick Install
@@ -340,10 +346,16 @@ cargo run -p writer
 | **Groups & Visibility** | Projects have three visibility tiers: `lan-only` -> `group` -> `public`. Groups use single-use invite tokens (48h TTL) |
 | **Contributions** | PR-style change proposals with voting (majority for 3+ gateways, PR review for 2) |
 | **Task Reconciler** | Rules-based 30-second loop: assigns tasks by capability match, merges duplicates, flags conflicts. No LLM required |
-| **Reactive Hooks** | Agents receive NATS events when tasks are assigned, snapshots change, or lifecycle events fire |
-| **Peer Federation** | Gateways sync state over mTLS gRPC with JWT auth. Each gateway runs independently; syncs when connected |
+| **Reactive Hooks** | Agents receive events via Pulsar/NATS when tasks are assigned, snapshots change, or lifecycle events fire |
+| **Peer Federation** | Gateways sync state over gRPC with JWT auth + HMAC-verified task logs. Each gateway runs independently; syncs when connected |
+| **Event Bus (Pulsar/NATS)** | Apache Pulsar for persistent geo-replicated delivery; NATS as lightweight fallback; auto-selects best available |
+| **Memory Service** | Verbatim fact storage with metadata filtering (agent, project, topic) and temporal validity windows |
 | **LXC Spawning** | Spawn agent containers on Proxmox via REST API. Gateway manages the full lifecycle |
-| **Error Classification** | Errors are classified as Transient (retry), Permanent (log), or NeedsHuman (escalate) |
+| **Error Classification** | Errors classified as Transient (retry), Permanent (log), or NeedsHuman (escalate) |
+| **Task State Machine** | 10-state lifecycle: Created → Queued → InProgress → Completed/Failed/Cancelled/TimedOut/Delegated |
+| **Web Dashboard Auth** | Optional bearer token auth on :7243 (header or query param, constant-time comparison) |
+| **CI/CD** | GitHub Actions: fmt, clippy, test (with Postgres), docker build, cargo audit on every push/PR |
+| **LLM PRD Generation** | Orchestrator agent calls Anthropic API to generate PRDs from agent state |
 
 ---
 
@@ -438,10 +450,13 @@ tools-a2a/
 |   |   |   +-- contributions.rs  # PR-style change proposals
 |   |   |   +-- task_log.rs       # HMAC-signed append-only log
 |   |   |   +-- error_class.rs    # Transient/Permanent/NeedsHuman
+|   |   |   +-- memory_service.rs # Verbatim fact storage + filtered recall
 |   |   |   +-- auth.rs           # JWT issue/validate
-|   |   |   +-- nats_bus.rs       # NATS event publisher
+|   |   |   +-- pulsar_bus.rs     # Apache Pulsar + unified EventBus
+|   |   |   +-- nats_bus.rs       # NATS event publisher (fallback)
 |   |   |   +-- lxc.rs            # Proxmox LXC management
-|   |   |   +-- peer_sync.rs      # Periodic peer synchronization
+|   |   |   +-- peer_sync.rs      # Periodic peer sync + HMAC verification
+|   |   |   +-- util.rs           # Shared utilities (now_secs, etc.)
 |   |   +-- migrations/           # 7 PostgreSQL migrations
 |   |   +-- templates/            # Minijinja HTML templates
 |   |   +-- tests/                # 10 integration tests
@@ -648,8 +663,14 @@ cert_path = "./certs/site-b.pem"
 | `A2A_JWT_SECRET` | Yes | HS256 secret for peer JWT auth (`openssl rand -hex 32`) |
 | `POSTGRES_PASSWORD` | Docker only | PostgreSQL password (used in compose) |
 | `A2A_PROXMOX_TOKEN` | For LXC | Proxmox API token (`user@realm!name=uuid`) |
-| `NATS_URL` | No | NATS server URL (default: `nats://127.0.0.1:4222`) |
+| `PULSAR_URL` | No | Apache Pulsar URL (e.g. `pulsar://pulsar:6650`). Preferred over NATS |
+| `PULSAR_TOKEN` | No | Pulsar auth token (if Pulsar requires authentication) |
+| `NATS_URL` | No | NATS server URL (default: `nats://127.0.0.1:4222`). Fallback if no Pulsar |
+| `NATS_USER` / `NATS_PASSWORD` | No | NATS auth credentials |
+| `A2A_WEB_TOKEN` | No | Bearer token for web dashboard auth. If unset, dashboard is open |
+| `ANTHROPIC_API_KEY` | No | For LLM PRD generation in orchestrator agent |
 | `A2A_CONFIG` | No | Config file path (default: `gateway.toml`) |
+| `CF_TUNNEL_TOKEN` | No | Cloudflare Tunnel token for public internet access |
 | `ENTROPY_WEBHOOK_URL` | No | Push notification webhook |
 
 ---
@@ -661,7 +682,8 @@ cert_path = "./certs/site-b.pem"
 | Dependency | Version | Purpose |
 |------------|---------|---------|
 | PostgreSQL | 16+ | All gateway state (agents, projects, groups, task log) |
-| NATS | 2.10+ | Event fan-out for agent hooks (optional, graceful degradation) |
+| Apache Pulsar | 3.3+ | Persistent event bus with geo-replication (preferred, optional) |
+| NATS | 2.10+ | Lightweight event fallback when Pulsar unavailable (optional) |
 | Docker | 24+ | Container builds and compose orchestration |
 
 ### Rust Crates (key dependencies)
@@ -671,7 +693,8 @@ cert_path = "./certs/site-b.pem"
 | `tonic` 0.12 | gRPC server + client (with TLS support) |
 | `axum` 0.7 | HTTP server (A2A JSON-RPC + web dashboard) |
 | `sqlx` 0.8 | PostgreSQL driver (pure Rust, async, compile-time checked) |
-| `async-nats` 0.38 | NATS client for event pub/sub |
+| `pulsar` 6.7 | Apache Pulsar client (persistent event bus, geo-replication) |
+| `async-nats` 0.38 | NATS client (lightweight fallback event bus) |
 | `rustls` 0.23 | TLS (pure Rust, no OpenSSL dependency) |
 | `jsonwebtoken` 9 | JWT issue/validate for peer auth |
 | `prost` 0.13 | Protobuf serialization |
@@ -699,23 +722,28 @@ cert_path = "./certs/site-b.pem"
 :7240 (LAN)         No TLS, no auth. Network boundary = trust boundary.
                      Gateway enforces call graph + hop limits.
 
-:7241 (Peers)        mTLS + JWT (HS256, 1hr TTL).
-                     Peer names verified on handshake.
+:7241 (Peers)        JWT auth (HS256, 1hr TTL). LAN peers skip TLS (tls=false).
+                     HMAC signatures verified on task log sync.
 
-:7242 (External)     HTTPS via reverse proxy (Cloudflare/Caddy).
-                     Optional bearer token auth.
+:7242 (External)     HTTPS via reverse proxy (Cloudflare Tunnel).
+                     CORS + security headers (X-Frame-Options, CSP).
 
-:7243 (Web UI)       LAN-only HTTP. Auth planned (see TODOS.md).
+:7243 (Web UI)       Optional bearer token auth via A2A_WEB_TOKEN.
+                     Constant-time token comparison.
 ```
 
 Key security properties:
 - All SQL uses parameterized queries (sqlx) — no injection vectors
-- HMAC-SHA256 signed task log entries — tamper-evident audit trail
-- Invite tokens: 32 random bytes, single-use, 48h TTL, atomic consumption
-- Agent endpoints validated against SSRF blocklist (metadata services, loopback)
-- Object store hashes validated as hex (no path traversal)
-- Non-root container user in Dockerfile
-- Secrets from env vars only — never in config files or code
+- HMAC-SHA256 signed task log entries — verified on peer sync (signatures preserved, not re-signed)
+- Invite tokens: 32 random bytes, single-use, 48h TTL, atomic consumption (no TOCTOU race)
+- Agent endpoints validated against SSRF blocklist (cloud metadata services)
+- Object store hashes validated as hex-only, length 64 (no path traversal)
+- Non-root container user (`a2a`) in Dockerfile
+- Secrets from env vars only — JWT secret required (hard fail, no default)
+- Vote immutability: `ON CONFLICT DO NOTHING` prevents vote flipping
+- Constant-time token comparison on web dashboard auth
+- CI/CD: automated fmt, clippy, test, audit on every push
+- External caller policy: configurable via `[call_graph]` "external" key
 
 Full threat model and 21-finding audit: [`docs/SECURITY_AUDIT.md`](docs/SECURITY_AUDIT.md)
 
@@ -726,7 +754,9 @@ Full threat model and 21-finding audit: [`docs/SECURITY_AUDIT.md`](docs/SECURITY
 ### Single Server (simplest)
 
 ```bash
-docker compose up -d    # Gateway + Postgres + NATS + Jaeger + 3 agents
+docker compose up -d                         # Gateway + Postgres + NATS + Jaeger + 3 agents
+docker compose --profile pulsar up -d        # Add Pulsar for persistent events
+docker compose --profile tunnel up -d        # Add Cloudflare Tunnel for public access
 ```
 
 ### Distributed (recommended for teams)
@@ -748,23 +778,25 @@ See the [Architecture Guide](docs/a2a-architecture.md) for detailed topology dia
 
 ## Database Schema
 
-7 migrations, all idempotent (`CREATE TABLE IF NOT EXISTS`):
+9 migrations, all idempotent (`CREATE TABLE IF NOT EXISTS`):
 
-| Migration | Tables |
-|-----------|--------|
+| Migration | Tables / Changes |
+|-----------|-----------------|
 | 001_init | `agents`, `memories`, `todos`, `requests`, `project_todos` |
 | 002_projects | `projects`, `agent_projects` |
 | 003_file_sync | `objects`, `snapshots`, `project_heads` |
-| 004_task_log | `task_log` (HMAC-signed, append-only) |
+| 004_task_log | `task_log` (HMAC-signed, append-only, FK to todos) |
 | 005_contributions | `contribution_proposals`, `contribution_votes` |
 | 006_groups | `groups`, `group_members`, `invites`, `group_projects` |
 | 007_task_status | Adds `task_status` (10-state FSM) + `valid_from`/`valid_to` columns |
+| 008_memory_facts | `memory_facts` (verbatim storage with metadata filtering + expiry) |
+| 009_peer_cursors | `peer_cursor_state` (tracks remote cursors for delta sync) |
 
 ---
 
-## Agent Hooks (NATS Events)
+## Agent Hooks (Pulsar / NATS Events)
 
-Agents can register reactive callbacks that fire when events occur:
+Agents can register reactive callbacks that fire when events occur. The gateway publishes to the best available bus (Pulsar > NATS > none):
 
 ```rust
 .on_task_assigned(|event| async move { /* reconciler assigned a task */ })
@@ -773,7 +805,7 @@ Agents can register reactive callbacks that fire when events occur:
 .on_broadcast(|event| async move { /* gateway-wide announcement */ })
 ```
 
-NATS subjects:
+Event topics (NATS subjects / Pulsar persistent topics):
 ```
 a2a.agent.{name}.task_assigned     # Per-agent task notification
 a2a.agent.{name}.snapshot          # Per-agent file change
@@ -781,7 +813,10 @@ a2a.agent.{name}.lifecycle         # Per-agent lifecycle
 a2a.broadcast.>                    # Gateway-wide events
 a2a.projects.{id}.snapshot         # Project snapshot (all subscribers)
 a2a.projects.{id}.tasklog          # Task log update (all subscribers)
+a2a.gateway.{name}.online          # Gateway liveness announcement
 ```
+
+**Event bus hierarchy**: `PULSAR_URL` set → Pulsar (persistent, geo-replicated). Unset → `NATS_URL` (fire-and-forget). Both unset → hooks disabled (gateway still works, just no push events).
 
 ---
 
