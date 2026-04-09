@@ -50,6 +50,7 @@ impl Registry {
 
     /// Upsert an agent — creates or updates the entry in both cache and DB.
     pub async fn upsert(&self, entry: AgentEntry) -> Result<()> {
+        tracing::debug!(agent = %entry.name, endpoint = %entry.endpoint, "registry upsert");
         let caps = serde_json::to_string(&entry.capabilities)?;
         sqlx::query(
             r#"INSERT INTO agents (name, version, endpoint, capabilities, soul_toml, registered_at, last_seen)

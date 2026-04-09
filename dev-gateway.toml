@@ -33,3 +33,13 @@ max_hops = 3
 # [[peers]]
 # name     = "hub"
 # endpoint = "http://192.168.1.67:7241"
+
+[[peers]]
+name     = "site-server"
+endpoint = "http://192.168.1.67:7241"
+tls      = false
+
+[[peers]]
+name     = "site-nas"
+endpoint = "http://192.168.1.76:7241"
+tls      = false

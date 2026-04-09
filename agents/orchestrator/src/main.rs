@@ -123,10 +123,7 @@ async fn main() -> Result<()> {
         .build()
         .await?;
 
-    // Append a startup todo so the reconciler picks it up
-    agent.append_todo("Await first task from user").await?;
-
-    info!("orchestrator registered, serving on {endpoint}");
+    info!("orchestrator built, will register on serve()");
 
     // Capture gateway address for use inside the handler
     let gateway_for_handler = gateway.clone();
